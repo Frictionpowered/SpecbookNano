@@ -22,3 +22,24 @@
 \
 Schematics: \
 ![Schematics](images/specbook_schematics.png)
+
+
+Compiles with the standard Arduino ESP8266 core (2.5.2). 
+
+SPIFFS works* but disabled for now because memory is really tight and it allocates 2K.
+
+Parts list:
+
+1x Wemos D1 Mini\
+1x ili9341 320x256 TFT display (the prototype shows a 2.8" one but there are various sizes and versions available)\
+2x PCF8574P I2C multiplexers\
+43x micro buttons\
+1x micro joystick\
+1x Wemos battery shield\
+1x microSD shield or socket
+1x mini speaker\
+1x 2N2222A NPN transistor\
+1x 220 Ohm resistor\
+1x 90x70mm protoboard and a lot of tiny wires, soon to be replaced with custom PCB :)\
+3D printed shell\
+8x M2x6mm screws
