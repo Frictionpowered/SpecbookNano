@@ -16,7 +16,8 @@
    https://github.com/greiman/SdFat
 
 
-
+![Image](images/IMG_5053.JPG)
 
 
 Schematics:
+![Schematics](images/specbook_schematics.png)
