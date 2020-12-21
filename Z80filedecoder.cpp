@@ -8,6 +8,7 @@
 extern Z80 state;
 extern unsigned char RAM[];
 
+extern void PrintStackSize();
 
 /*
 boolean ICACHE_FLASH_ATTR SetZ80(Z80 *R, z80fileheader *header)
@@ -285,12 +286,15 @@ void ICACHE_FLASH_ATTR z80FileDecompressV2(SdFile *file, int iDataSize, int iDat
   uint32_t offset = 0; // write offset into memory
   int iCacheOffset = 0;
 
-  int nextBlock = 0;
-  int nextBlockSize = 0;
+  int nextBlock = 0;        //current block type
+  int nextBlockSize = 0;    //bytes left from current block
+  bool skipBlock = false;
 
   DEBUG_PSTRLN("startdecode v2 ");
   DEBUG_PRINTLN(iDataSize);
-
+    
+    PrintStackSize();
+    
   for (int i = iDataOffset; i < iDataSize ; i++)
   {
 
@@ -306,9 +310,10 @@ void ICACHE_FLASH_ATTR z80FileDecompressV2(SdFile *file, int iDataSize, int iDat
 
       nextBlockSize = _CACHE[(i) - iCacheOffset] + (_CACHE[(i+1) - iCacheOffset] << 8);
       DEBUG_PSTR("NEXTBLOCK:");
-      DEBUG_PRINTLN(_CACHE[(i + 2) - iCacheOffset]); //"page number"
+      DEBUG_PRINTLN(_CACHE[(i + 2) - iCacheOffset]);    //"page number"; block type
       DEBUG_PRINTLN(nextBlockSize); //compressed size
 
+      skipBlock = false;
       switch (_CACHE[(i + 2) - iCacheOffset])
       {
         case 4:
@@ -326,29 +331,37 @@ void ICACHE_FLASH_ATTR z80FileDecompressV2(SdFile *file, int iDataSize, int iDat
           offset = 0x4000 - ROMSIZE;
           nextBlock = 8;
           break;
-      default:
-          DEBUG_PSTRLN("????ERROR");
-          return;
+        default:
+          //DEBUG_PSTRLN("????ERROR");
+          //return;
+          DEBUG_PSTRLN("SKIP");
+          nextBlock = _CACHE[(i + 2) - iCacheOffset];
+          skipBlock = true;
       }
 
       DEBUG_PRINTLN(offset);
-      //DEBUG_PRINTLN(nextBlock);
+
       i += 3;
     }
 
     if (i >= (iCacheOffset + 512))
     { //cache empty
-      DEBUG_PSTRLN("cache_shift");
-      DEBUG_PRINTLN(iCacheOffset);
-      memcpy(_CACHE, _CACHE + 512, 512); //shift down
-      iCacheOffset += 512;
-      z80FileFillCacheContinue(file);   //read next block
+        DEBUG_PSTRLN("cache_shift");
+        DEBUG_PRINTLN(iCacheOffset);
+        memcpy(_CACHE, _CACHE + 512, 512); //shift down
+        iCacheOffset += 512;
+        z80FileFillCacheContinue(file);   //read next block
+      
+        PrintStackSize();
     }
 
+    if (skipBlock)
+    {
+    } else
     if (  nextBlockSize  >= 4
        && _CACHE[(i) - iCacheOffset] == 0xED 
        && _CACHE[(i + 1) - iCacheOffset] == 0xED )
-     {//repeat block
+    {//repeat block
         i += 2;
         nextBlockSize -= 2;
         unsigned int repeat = (unsigned char) _CACHE[(i) - iCacheOffset];
@@ -363,13 +376,12 @@ void ICACHE_FLASH_ATTR z80FileDecompressV2(SdFile *file, int iDataSize, int iDat
             RAM[offset] = val;
           offset++;
         }
-     }
-     else
-     {
+    } else
+    {
         if (offset < RAMSIZE) 
             RAM[offset] = _CACHE[(i) - iCacheOffset];
         offset++;
-     }
+    }
 
     nextBlockSize -= 1;
   }
@@ -379,7 +391,7 @@ void ICACHE_FLASH_ATTR z80FileDecompressV2(SdFile *file, int iDataSize, int iDat
   DEBUG_PRINTLN(offset);
 }
 
-int  ICACHE_FLASH_ATTR z80FileLoad(SdFile *file, unsigned char CACHE[], uint16_t bufferSize)
+int  ICACHE_FLASH_ATTR z80FileLoad(SdFile *file, unsigned char *CACHE, uint16_t bufferSize)
 {
     _CACHE = CACHE;
     
@@ -485,7 +497,7 @@ int ICACHE_FLASH_ATTR z80FileSaveEnd(SdFile *file)
 
 
 //save z80 file. file format 1 with 30 bytes header
-int  ICACHE_FLASH_ATTR z80FileSave(SdFile *file, byte CACHE[], uint16_t bufferSize)
+int  ICACHE_FLASH_ATTR z80FileSave(SdFile *file, byte *CACHE, uint16_t bufferSize)
 {
     _CACHE = CACHE;
 
@@ -580,7 +592,7 @@ int  ICACHE_FLASH_ATTR z80FileSave(SdFile *file, byte CACHE[], uint16_t bufferSi
 }
 
 
-int  ICACHE_FLASH_ATTR SnaFileLoad(SdFile *file, unsigned char CACHE[], uint16_t bufferSize)
+int  ICACHE_FLASH_ATTR SnaFileLoad(SdFile *file, unsigned char *CACHE, uint16_t bufferSize)
 {
     DEBUG_PSTRLN("load_SNA");
     

@@ -28,19 +28,20 @@ extern bool borderCycle;
 extern uint8_t zxDisplayScanToggle;
 
 extern int UpdateInputs(bool doJoystick);
-
+extern void PrintStackSize();
 
 char MiniMenu();
 int MainMenu();
 int FileMenu(bool spiffs);
 int KeyboardMenu();
 int JoystickMenu();
-int WifiMenu();
+int ExtrasMenu();
+int Debugger();
 
 int ListDir(const char* currentPath, int startIndex, int numToShow, char* list[], char* ptr);
 int FindFileIndex(const char* currentPath, const char* fileName);
 uint16_t FindQuicksaves();
-int Open(char* fileName, char* currentPath, unsigned char BUFFER[]);
+int Open(char* fileName, char* currentPath, unsigned char *BUFFER);
 int Delete(char* fileName, char* currentPath);
 int Copy(char* fileName, char* currentPath, char* targetName);
 #ifdef USE_SPIFFS
@@ -49,15 +50,16 @@ int ICACHE_FLASH_ATTR ListDirSpiffs(char* currentPath, int startIndex, int numTo
 
 int SaveZ80(const char *fileName);
 int LoadZ80(const char *fileName);
-int TextViewer(SdFile *file, unsigned char BUFFER[], int bufferSize, char* fileName, char* currentPath);
+int TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize, char* fileName, char* currentPath);
 
-int SaveBuffer(const char *fileName, const char buffer[], int length, bool SD_already_open = false);
-int LoadBuffer(const char *fileName, char buffer[], int maxLength);
+int SaveBuffer(const char *fileName, const char *buffer, int length, bool SD_already_open = false);
+int LoadBuffer(const char *fileName, char *buffer, int maxLength);
 
 char MessageInput();
 char Message(const char *text, bool wait = true);
 //char Message(const __FlashStringHelper* str1, const __FlashStringHelper* str2 = nullptr);
 char Message(const char* str1, const char* str2, bool wait = true);
+char TextEntry(const char* label, char* inbuf, int maxLength);
 
 void BuildMiniScreen();
 
@@ -72,8 +74,52 @@ extern char GetPressedKey();
 extern bool IsKeyPressed(char row, char col);
 
 
-const int z80DelayCycles[] PROGMEM = {0, 2, 5, 10, 20};
+const int z80DelayCycles[] PROGMEM = {0, 2, 4, 10, 20};
 const int z80TimerFreqs[] PROGMEM = {10, 25, 50, 75, 100};
+
+
+SdFat sd;
+
+void ICACHE_FLASH_ATTR SD_Setup()
+{
+    spiSwitchSet(SD_CS);
+   
+    //SdFat sd;
+
+    if (sd.begin(SD_CS, SPISettings(
+                  SPI_SPEED_SD,
+                  MSBFIRST,
+                  SPI_MODE0)))
+    {
+        DEBUG_PSTRLN(F("sd.begin OK"));
+       
+/*        sprintf_P(buf, PSTR("/"));
+        if (dirFile.open(buf, O_RDONLY))   //can do path :) e.g "/DCIM/"
+        {
+            SdFile file;
+   
+            while (file.openNext(&dirFile, O_RDONLY))
+            {
+                file.getName(buf, 64);
+                Serial.println(buf);
+                
+                file.close();
+            }
+
+            dirFile.close();
+            
+        } else
+        {
+            DEBUG_PSTRLN(F("dir.open FAIL"));
+        }
+*/
+    } else
+    {
+        DEBUG_PSTRLN(F("sd.begin FAIL"));
+    }
+    
+    spiSwitchReset();
+}
 
 
 #define PATH_MAX_LEN    64
@@ -94,15 +140,17 @@ int ICACHE_FLASH_ATTR MainMenu()
 const char* const menu_table[] = 
     { PSTR("1 Open SD")
     , PSTR("2 Open SPIFFS")
-    , PSTR("3 Keyboard Layout") 
+    , PSTR("3 Keyboard Layout")
     , PSTR("4 Joystick")
     , PSTR("5 Sound")
-    , PSTR("6 CPU Speed") 
+    , PSTR("6 CPU Speed")
     , PSTR("7 Timer Freq")
 //    , PSTR("8 Screen Refresh Rate")
-    , PSTR("8 Border")
-    , PSTR("9 Wifi")
-    , PSTR("S Save Z80 file")
+//    , PSTR("8 Border")
+    , PSTR("8 Debugger")
+    , PSTR("9 Extras")
+    , PSTR("S Save state as Z80")
+//    , PSTR("S Save screen as SCR")
     , PSTR("R Reset")
     };
 const char* bottomLine = PSTR("Caps+1..9:SAVE  Sym+1..9:LOAD  Esc:Back");    
@@ -175,6 +223,12 @@ const char* const cpu_delay_table[] =
             return -1;
         }
     }
+
+    //DEBUG_PSTRLN(F("Free heap: "));
+    //DEBUG_PRINTLN(ESP.getFreeHeap());
+    //DEBUG_PSTRLN(F("Free stack: "));
+    //DEBUG_PRINTLN(ESP.getFreeContStack());
+    PrintStackSize();
         
     while(true)
     {
@@ -242,6 +296,8 @@ const char* const cpu_delay_table[] =
                         zxDisplayTft.drawRect(3+i*35, 190-1, 32+2, 24+2, TFT_WHITE);
                     }
 
+                    zxDisplayTft.setTextColor(TFT_YELLOW, TFT_TRANSPARENT)
+                    ;
                     uint16_t bits = FindQuicksaves();
                     
                     for(int i=0; i<9; i++)
@@ -260,7 +316,7 @@ const char* const cpu_delay_table[] =
                                 zxDisplayTft.fillRect(4+i*35, 190, 32, 24, TFT_LIGHTGREY);
                             }
                         }
-                        sprintf(buf, F("%d"), 1+i);
+                        sprintf_P(buf, PSTR("%d"), 1+i);
                         zxDisplayTft.drawString(buf, 3+i*35+16, 190+12);
                     }
                 }
@@ -277,7 +333,7 @@ const char* const cpu_delay_table[] =
             strcpy_P(buf, (PGM_P)sound_table[soundenabled]);
             zxDisplayTft.drawString(buf, 150, 10+4*16);
             
-            sprintf(buf, F("%d  "), z80DelayCycle);
+            sprintf_P(buf, PSTR("%d  "), z80DelayCycle);
             for(uint16_t i=0; i<sizeof(z80DelayCycles) / sizeof(z80DelayCycles[0]); i++)
             {
                 if (z80DelayCycles[i] == z80DelayCycle)
@@ -288,10 +344,10 @@ const char* const cpu_delay_table[] =
             }
             zxDisplayTft.drawString(buf, 150, 10+5*16);
             
-            sprintf(buf, F("%d  "), timerfreq);
+            sprintf_P(buf, PSTR("%d  "), timerfreq);
             zxDisplayTft.drawString(buf, 150, 10+6*16);
 
-            sprintf(buf, F("Batt: %d%% (%d.%dV)"), batteryPercent
+            sprintf_P(buf, PSTR("Batt: %d%% (%d.%dV)"), batteryPercent
                         , batteryMilliVolts/1000, batteryMilliVolts%1000);
             zxDisplayTft.setTextDatum(TR_DATUM);
             zxDisplayTft.drawString(buf, 319, 0);
@@ -368,16 +424,18 @@ const char* const cpu_delay_table[] =
             needRender = true;
             return -1;
         } else
-        if (KEMPSTONJOYSTICK & BUTTON_DOWN )
+        if (KEMPSTONJOYSTICK & BUTTON_UP
+           || IsKeyPressed(1,0) )   //Q
         {
-            currentItem = (++currentItem) % numItems;
+            currentItem = currentItem > 0 ? --currentItem : numItems-1;
             waitForInputClear = true;
             needRender = true;
             keyRepeatMillis = now + (keyRepeating ? 100 : 500);
         } else
-        if (KEMPSTONJOYSTICK & BUTTON_UP )
+        if (KEMPSTONJOYSTICK & BUTTON_DOWN
+           || IsKeyPressed(2,0) )   //A
         {
-            currentItem = currentItem > 0 ? --currentItem : numItems-1;
+            currentItem = (++currentItem) % numItems;
             waitForInputClear = true;
             needRender = true;
             keyRepeatMillis = now + (keyRepeating ? 100 : 500);
@@ -462,15 +520,21 @@ const char* const cpu_delay_table[] =
                     break;
                     
                 case 8:
-                    borderCycle = !borderCycle;
+                    //borderCycle = !borderCycle;
+                    Debugger();
                     break;
                     
-                case 9:    //wifi (or extras)
-                    WifiMenu();
+                case 9:    //extras
+                    ExtrasMenu();
                     break;
                     
                 case 10:    //save .z80; ask for name first, needs text input implementation
-                    SaveZ80(F("QuickSave.z80"));    //for now, since i don't have a text input dialog yet
+                    char newName[50];
+                    strncpy(newName, F("QuickSave.z80"), 50);
+                    if(TextEntry(F("Save as"), newName, 50) == 1)
+                    {
+                        SaveZ80(newName);
+                    }
                     break;
                     
                 case 12:
@@ -538,7 +602,7 @@ int ICACHE_FLASH_ATTR ListDir(const char* currentPath, int startIndex, int numTo
     
     spiSwitchSet(SD_CS);
    
-    SdFat sd;
+    //SdFat sd;
     SdFile dirFile;
     
     if (sd.begin(SD_CS, SPISettings(
@@ -618,7 +682,7 @@ int ICACHE_FLASH_ATTR FindFileIndex(const char* currentPath, const char* fileNam
     
     spiSwitchSet(SD_CS);
    
-    SdFat sd;
+    //SdFat sd;
     SdFile dirFile;
     
     if (sd.begin(SD_CS, SPISettings(
@@ -668,9 +732,12 @@ uint16_t ICACHE_FLASH_ATTR FindQuicksaves()
 {
     uint16_t bits = 0;
 
+    DEBUG_PSTRLN(F("FindQuickSaves"));
+    PrintStackSize();
+
     spiSwitchSet(SD_CS);
    
-    SdFat sd;
+    //SdFat sd;
     SdFile dirFile;
     
     if (!sd.begin(SD_CS, SPISettings(
@@ -732,13 +799,33 @@ uint16_t ICACHE_FLASH_ATTR FindQuicksaves()
     return bits;
 }
 
-int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char BUFFER[])
+int ICACHE_FLASH_ATTR OpenSub(SdFile &file, char* fileName, char* currentPath)
+{
+    char fullPath[256]; //only allocated while absolutely necessary
+    strncpy(fullPath, currentPath, 256);
+    strncat(fullPath, fileName, 256);
+
+    Serial.println(fullPath);
+
+    DEBUG_PSTRLN(F("open"));
+    int openresult = file.open(fullPath, O_RDONLY);   //can do path :) e.g "/DCIM/"
+
+    //have to save it here as it's in the BUFFER and will be overwritten
+    if (openresult && !file.isSubDir())
+        SaveBuffer(F("LastPath.txt"), fullPath, strlen(fullPath)+1, true);
+    
+    return openresult;
+}
+
+int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char* BUFFER)
 {
     spiSwitchSet(SD_CS);
     
-    SdFat sd;
+    //SdFat sd;   //this seems to take 624 bytes on the stack
 
     DEBUG_PSTRLN(F("open_begin"));
+    PrintStackSize();
+    
     if (sd.begin(SD_CS, SPISettings(
                   SPI_SPEED_SD,
                   MSBFIRST,
@@ -749,20 +836,20 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char BUFF
         char* extension = fileName + strlen(fileName) - 3;
         Serial.println(extension);
         
-        int openresult = 0;
+        int openresult = OpenSub(file, fileName, currentPath);
         {
-            char fullPath[256]; //only allocated while absolutely necessary
-            strncpy(fullPath, currentPath, 256);
-            strncat(fullPath, fileName, 256);
+            //char fullPath[256]; //only allocated while absolutely necessary
+            //strncpy(fullPath, currentPath, 256);
+            //strncat(fullPath, fileName, 256);
     
-            Serial.println(fullPath);
+            //Serial.println(fullPath);
 
-            DEBUG_PSTRLN(F("open"));
-            openresult = file.open(fullPath, O_RDONLY);   //can do path :) e.g "/DCIM/"
+            //DEBUG_PSTRLN(F("open"));
+            //openresult = file.open(fullPath, O_RDONLY);   //can do path :) e.g "/DCIM/"
 
             //have to save it here as it's in the BUFFER and will be overwritten
-            if (openresult && !file.isSubDir())
-                SaveBuffer(F("LastPath.txt"), fullPath, strlen(fullPath)+1, true);
+            //if (openresult && !file.isSubDir())
+            //    SaveBuffer(F("LastPath.txt"), fullPath, strlen(fullPath)+1, true);
         }
 
         if (openresult)
@@ -778,21 +865,23 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char BUFF
             }
 
             //note: not necessary at the END :oP but it will do for now
-            if (!strcasecmp(extension, "Z80"))
-            //if (!strcmp_P(extension, PSTR("Z80"))
-            // || !strcmp_P(extension, PSTR("z80")))
+            //if (!strcasecmp(extension, "Z80"))
+            if (!strcmp_P(extension, PSTR("Z80"))
+             || !strcmp_P(extension, PSTR("z80")))
             {
                 DEBUG_PSTRLN(F(".Z80 load "));
+                PrintStackSize();
                 z80FileLoad(&file, BUFFER, BUFFERSIZE);
+                PrintStackSize();
                 
                 DEBUG_PSTRLN(F("close"));
                 file.close();
                 spiSwitchSet(TFT_CS);
                 return 1;
             } else
-            if (!strcasecmp(extension, "SCR"))
-            //if (!strcmp_P(extension, PSTR("SCR"))
-            // || !strcmp_P(extension, PSTR("scr")))
+            //if (!strcasecmp(extension, "SCR"))
+            if (!strcmp_P(extension, PSTR("SCR"))
+             || !strcmp_P(extension, PSTR("scr")))
             {//screen dump
                 DEBUG_PSTRLN(F(".SCR load "));
                 file.read(RAM, 6912);
@@ -801,6 +890,8 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char BUFF
                 return 1;
             } else
             if (!strcasecmp(extension, "SNA"))
+            //if (!strcmp_P(extension, PSTR("SNA"))
+            // || !strcmp_P(extension, PSTR("sna")))
             {//snapshot
                 DEBUG_PSTRLN(F(".SNA load "));
                 SnaFileLoad(&file, BUFFER, BUFFERSIZE);
@@ -844,7 +935,7 @@ int ICACHE_FLASH_ATTR Delete(char* fileName, char* currentPath)
 {
     spiSwitchSet(SD_CS);
     
-    SdFat sd;
+    //SdFat sd;
 
     DEBUG_PSTRLN(F("delete_begin"));
     if (sd.begin(SD_CS, SPISettings(
@@ -964,6 +1055,12 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
     unsigned long keyRepeatMillis = -1;
     char lastPressedKey = 0;
 
+    //DEBUG_PSTRLN(F("Free heap: "));
+    //DEBUG_PRINTLN(ESP.getFreeHeap());
+    //DEBUG_PSTRLN(F("Free stack: "));
+    //DEBUG_PRINTLN(ESP.getFreeContStack());
+    PrintStackSize();
+
     while(true)
     {
         if (navNeedsInit)
@@ -978,6 +1075,7 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
             {//success
                 DEBUG_PSTR(F("LastPath="));
                 DEBUG_PRINTLN(currentPath);
+                PrintStackSize();
                 
                 //separate path and filename
                 char* lastDash = currentPath + loadedLen-2;
@@ -986,20 +1084,22 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
                     lastDash--;
                 }
                 
+                char fileName[64];
+                
                 //find navCurrentIndex of the fileName in the folder
                 if (lastDash < currentPath)
                 {//not found; filename starts at currentPath
-                    char fileName[64];
                     strncpy(fileName, currentPath, 64);
                     navCurrentIndex = FindFileIndex(F("/"), fileName);
                     strcpy_P(currentPath, F("/"));      //start in the root folder
                 } else
                 {//filename starts at lastDash+1
-                    char fileName[64];
                     strncpy(fileName, lastDash+1, 64);
                     *(lastDash+1) = 0;
                     navCurrentIndex = FindFileIndex(currentPath, fileName);
                 }
+                PrintStackSize();
+                
                 numNavEntries = navCurrentIndex;    //workaround for the check ;)
             } else
             {
@@ -1042,6 +1142,7 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
                     numNavEntries = ListDir(currentPath, navStartIndex, NUM_SHOW_ENTRIES, navList, (char*)&BUFFER + strlen(currentPath)+2);
                 
                 lastHighlightedEntry = -1;
+                PrintStackSize();
             }
         
             spiSwitchSet(TFT_CS);
@@ -1088,9 +1189,9 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
             zxDisplayTft.setTextColor(TFT_YELLOW, TFT_BLACK);
             {
                 char buf[32];
-                strcpy_P(buf, spiffs ? F("SPIFFS Directory") : F("SD Directory"));
+                strcpy_P(buf, spiffs ? PSTR("SPIFFS Directory") : PSTR("SD Directory"));
                 zxDisplayTft.drawString(buf, 120, 0);
-                sprintf(buf, F("P%d: %d/%d "), navPage, navCurrentIndex, numNavEntries);
+                sprintf_P(buf, PSTR("P%d: %d/%d "), navPage, navCurrentIndex, numNavEntries);
                 zxDisplayTft.drawString(buf, 250, 0);
                 zxDisplayTft.drawString(currentPath, 0, 0);
             }
@@ -1127,7 +1228,7 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
             keyRepeatMillis = -1;
             navNeedsRender = true;
             
-            //ToDo: up a folder
+            //up a folder
             int len = strlen(currentPath);
             if (len <= 1)
                 return -1;  //back to main menu
@@ -1135,23 +1236,35 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
             while(lastDash > currentPath && *lastDash != '/')
             {
                 lastDash--;
-            } 
-            *(lastDash+1) = 0;
-            //Serial.println(currentPath);
+            }
+
+            char folderName[64];
+            strncpy(folderName, lastDash+1, 64);
+            folderName[strlen(folderName)-1] = 0; //remove closing '/'
+           
+            *(lastDash+1) = 0;  //terminate currentpath
+            Serial.println(currentPath);
+            Serial.println(folderName);
+
+            //ToDo: find the index of the folder we just exited but this will do for now
+            //navCurrentIndex = 0;
+            navCurrentIndex = FindFileIndex(currentPath, folderName);
+            numNavEntries = navCurrentIndex;    //workaround for the check ;)
+            
             navNeedsRead = true;
-            //might be better to find the folder we just exited but this will do for now
-            navCurrentIndex = 0;
         } else
-        if (KEMPSTONJOYSTICK & BUTTON_DOWN )
+        if (KEMPSTONJOYSTICK & BUTTON_UP
+           || IsKeyPressed(1,0) )   //Q
         {
-            navCurrentIndex = (++navCurrentIndex) % numNavEntries;
+            navCurrentIndex = navCurrentIndex > 0 ? --navCurrentIndex : numNavEntries-1;
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 100 : 500);
             navNeedsRender = true;
         } else
-        if (KEMPSTONJOYSTICK & BUTTON_UP )
+        if (KEMPSTONJOYSTICK & BUTTON_DOWN
+           || IsKeyPressed(2,0) )   //A
         {
-            navCurrentIndex = navCurrentIndex > 0 ? --navCurrentIndex : numNavEntries-1;
+            navCurrentIndex = (++navCurrentIndex) % numNavEntries;
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 100 : 500);
             navNeedsRender = true;
@@ -1207,6 +1320,7 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
             //to delete a file, sd.remove("test.txt")
             //to rename, https://codebender.cc/example/SdFat/rename#rename.ino
             //to copy, use a buffer
+            Serial.println(key, DEC);
             switch(key)
             {
                 case 'd':
@@ -1216,7 +1330,13 @@ const char* bottomLine = PSTR("Fire:Open  Caps+0:Delete  Fire2:Menu  Esc:Back");
                     //ToDo: ask for new name; copy and delete
                     break;
                 case 'c':
-                    //ToDo: ask for target name
+                    //ask for target name
+                    char newName[50];
+                    strncpy(newName, navList[i], 50);
+                    if(TextEntry(F("Copy to"), newName, 50) == 1)
+                    {
+                        //ToDo
+                    }
                     break;
                 default:
                     break;
@@ -1396,41 +1516,7 @@ int ICACHE_FLASH_ATTR JoystickMenu()
     return -1;
 }
 */
-int ICACHE_FLASH_ATTR WifiMenu()
-{
-    spiSwitchSet(TFT_CS);
-    
-    zxDisplayTft.fillScreen(TFT_BLACK);
-    zxDisplayTft.setTextFont(0);
-    zxDisplayTft.setTextSize(1);
-    zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
-    zxDisplayTft.setTextDatum(TL_DATUM);
 
-    {
-        char buf[64];
-        strcpy_P(buf, PSTR("WiFi - Not implemented yet"));
-        zxDisplayTft.drawString(buf, 150, 0);
-    }
-    
-    waitForInputClear = true;
-
-    while(true)
-    {
-        UpdateInputs(false);
-        delay(1);   //power saving
-        
-        if (MustWaitForInputClear()) continue;
-        
-        if (KEMPSTONJOYSTICK & BUTTON_ESC
-         || KEMPSTONJOYSTICK & BUTTON_FIRE )    //select
-        {
-            waitForInputClear = true;
-            return -1;
-        }
-    }
-    
-    return -1;
-}
 
 //Waits for input release and first press, returns which button (or -1 if it was joystick)
 char ICACHE_FLASH_ATTR MessageInput()
@@ -1538,9 +1624,11 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
     int _h = zxDisplayTft.fontHeight();
     int h = _h * 2;
 
-    strncpy_P(buf, (PGM_P)label, sizeof(buf));
-    int w1 = zxDisplayTft.textWidth(buf);
-    int w2 = maxLength * 8;//zxDisplayTft.textWidth("_");
+    #define CHAR_WIDTH (5+1)
+
+    //strncpy_P(buf, (PGM_P)label, sizeof(buf));
+    int w1 = zxDisplayTft.textWidth(label);
+    int w2 = maxLength * CHAR_WIDTH;
     int w = max(w1, w2);
 
     zxDisplayTft.fillRect(160-(w+16)/2, 120-(h+16)/2, w+16, h+16, TFT_BLACK);
@@ -1549,27 +1637,44 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
     int x0 = 160-(w+8)/2;
     zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
     zxDisplayTft.setTextDatum(TL_DATUM);
-    zxDisplayTft.drawString(buf, x0, 120-_h);
+    zxDisplayTft.drawString(label, x0, 120-_h);
     
-    //strncpy_P(buf, (PGM_P)str2, sizeof(buf));
     zxDisplayTft.setTextColor(TFT_YELLOW, TFT_BLACK);
     zxDisplayTft.setTextDatum(TL_DATUM);
     
     waitForInputClear = true;
 
+    unsigned long keyRepeatMillis = -1;
+    bool keyRepeating = false;
+    
     int curPos = strlen(inbuf);
     char lastKey = 0;
     while(true)
     {
         zxDisplayTft.drawString(inbuf, x0, 120);
     
-        zxDisplayTft.drawString("_", x0+8*curPos, 120);
+        zxDisplayTft.drawString("_", x0 + CHAR_WIDTH*curPos, 120);
         
+        unsigned long now = millis();
         UpdateInputs(false);
         delay(1);   //power saving
         
-        if (MustWaitForInputClear()) continue;
+        if (MustWaitForInputClear())
+        {
+            if (now < keyRepeatMillis || keyRepeatMillis <= 0)
+                continue;   //keep waiting
+            //exceeded, start repeating
+            keyRepeating = true;
+        } else
+        {
+            keyRepeating = false;
+        }
 
+        if (KEMPSTONJOYSTICK & BUTTON_ESC)
+        {
+            waitForInputClear = true;
+            return -1;
+        }
         if (KEMPSTONJOYSTICK & BUTTON_FIRE)
         {
             waitForInputClear = true;
@@ -1578,9 +1683,24 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
         if (KEMPSTONJOYSTICK & BUTTON_FIRE)
         {
             waitForInputClear = true;
-            return -1;
+            return -2;
         }
         
+        if (KEMPSTONJOYSTICK & BUTTON_LEFT)
+        {
+            if (curPos > 0) curPos--;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+            continue;
+        }
+        if (KEMPSTONJOYSTICK & BUTTON_RIGHT)
+        {
+            if (curPos < strlen(inbuf)) curPos++;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+            continue;
+        }
+       
         lastKey = GetPressedKey();
         switch (lastKey)
         {
@@ -1591,15 +1711,18 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
             case 2: //caps
             case 3: //caps+sym
                 break;
+                
             case '\n':  //enter
                 return 1;
             case '\r':  //shift+enter
-                return 1;
+                return 2;
+                
             case '\b':  //del
                 inbuf[curPos] = 0;
                 strncpy(&inbuf[curPos], &inbuf[curPos+1], maxLength-curPos);
                 curPos--;
                 waitForInputClear = true;
+                keyRepeatMillis = now + (keyRepeating ? 100 : 500);
                 break;
                 
             default:
@@ -1609,6 +1732,8 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
                     inbuf[curPos] = 0;  //temp
                 }
                 waitForInputClear = true;
+                keyRepeating = false;
+                keyRepeatMillis = now + 500;
                 break;
         }
     }
@@ -1620,12 +1745,13 @@ int ICACHE_FLASH_ATTR SaveZ80(const char *fileName)
 {
     unsigned char BUFFER[BUFFERSIZE];    //only allocate it here when it's needed to keep more dynamic memory free
     
-    SdFat sd;
+    //SdFat sd;
     SdFile file;
 
     spiSwitchSet(SD_CS);
     
-    DEBUG_PSTRLN(F("saveZ80_begin"));
+    DEBUG_PSTR(F("saveZ80_begin "));
+    DEBUG_PRINTLN(fileName);
     
     if (!sd.begin(SD_CS, SPISettings(
                   SPI_SPEED_SD,
@@ -1665,12 +1791,13 @@ int ICACHE_FLASH_ATTR LoadZ80(const char *fileName)
 {
     unsigned char BUFFER[BUFFERSIZE];    //only allocate it here when it's needed to keep more dynamic memory free
     
-    SdFat sd;
+    //SdFat sd;
     SdFile file;
 
     spiSwitchSet(SD_CS);
     
-    DEBUG_PSTRLN(F("loadZ80_begin"));
+    DEBUG_PSTR(F("loadZ80_begin "));
+    DEBUG_PRINTLN(fileName);
     
     if (!sd.begin(SD_CS, SPISettings(
                   SPI_SPEED_SD,
@@ -1714,7 +1841,7 @@ __inline char* strnchr(char* string, char chr, int maxLength)
     return 0;
 }
 
-int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char BUFFER[], int bufferSize, char* fileName, char* currentPath)
+int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize, char* fileName, char* currentPath)
 {
     int filesize = file->fileSize();
     DEBUG_PRINTLN(filesize);
@@ -1910,9 +2037,9 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char BUFFER[], int buffe
 }
 
 //return 0 if success
-int ICACHE_FLASH_ATTR SaveBuffer(const char *fileName, const char buf[], int len, bool SD_already_open)
+int ICACHE_FLASH_ATTR SaveBuffer(const char *fileName, const char *buf, int len, bool SD_already_open)
 {
-    SdFat sd;
+    //SdFat sd;
     SdFile file;
 
     DEBUG_PSTR(F("save_begin "));
@@ -1963,9 +2090,9 @@ int ICACHE_FLASH_ATTR SaveBuffer(const char *fileName, const char buf[], int len
 }
 
 //return length loaded
-int ICACHE_FLASH_ATTR LoadBuffer(const char *fileName, char buf[], int maxLength)
+int ICACHE_FLASH_ATTR LoadBuffer(const char *fileName, char *buf, int maxLength)
 {
-    SdFat sd;
+    //SdFat sd;
     SdFile file;
 
     DEBUG_PSTR(F("load_begin "));
@@ -2066,7 +2193,7 @@ const byte numBitsOn[256] PROGMEM = {
      
 void ICACHE_FLASH_ATTR BuildMiniScreen()
 {
-    unsigned char BUFFER[32*24];    //one byte(pixel) for each 8x8 block
+//    unsigned char BUFFER[32*24];    //one byte(pixel) for each 8x8 block
 
     DEBUG_PSTRLN(F("MINI_SCREEN"));
     
@@ -2109,21 +2236,303 @@ void ICACHE_FLASH_ATTR BuildMiniScreen()
                     B = B>>1;
                 }
 
-                //the TFT_eSPI colour format is 16 bits (2 bytes), 565 RGB: [RRRR|RGGG||GGGB|BBBB]
+                //the TFT_eSPI colour format is 16 bits (2 bytes), 565 RGB: [RRRRRGGG|GGGBBBBB]
                 uint16_t col16 = 0;
-                col16 += (R >> 3) << 11;
-                col16 += (G >> 2) << 5;
-                col16 += (B >> 3);
+                //col16 += (R >> 3) << 11;
+                //col16 += (G >> 2) << 5;
+                //col16 += (B >> 3);
 
                 //Serial.printf("\n %d, %d, %d  %d,%d,%d  %d", num1s, alpha, col, R,G,B, col16);
                 //ESP.wdtFeed();
-                
-                zxDisplayTft.drawPixel(319-35+x, 150+(b*8+y), col16);
-                
+               
                 //need a max 8-bit colour palette to store the image in only one byte per pixel
                 // https://en.wikipedia.org/wiki/8-bit_color
+                // RRRGGGBB
+                uint16_t col8 = 0;
+                col8 += (R >> 5) << 5;
+                col8 += (G >> 5) << 2;
+                col8 += (B >> 6);
+                
+//                BUFFER[(b*8+y)*32 + x] = col8;
+
+                //332RGB col to 565RGB conversion:
+                col16 = (col8 & 0xE0) << 8;
+                col16 += (col8 & 0x1C) << 6;
+                col16 += (col8 & 0x03) << 3;
+                
+                zxDisplayTft.drawPixel(319-35+x, 150+(b*8+y), col16);
             }
             //Serial.println();
         }
     }
+}
+
+int ICACHE_FLASH_ATTR ExtrasMenu()
+{
+    DEBUG_PSTRLN(F("EXTRAS"));
+    
+    spiSwitchSet(TFT_CS);
+    
+    zxDisplayTft.fillScreen(TFT_BLACK);
+    zxDisplayTft.setTextFont(0);
+    zxDisplayTft.setTextSize(1);
+    zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
+    zxDisplayTft.setTextDatum(TL_DATUM);
+
+    {
+        char buf[64];
+        strcpy_P(buf, PSTR("ESP8266 Extras"));
+        zxDisplayTft.drawString(buf, 150, 0);
+
+        //ToDo: display diagnostics about the ESP8266 (e.g. heap, stack, frame rate, time, i2c, spi, sdcard, etc),
+        //tests (e.g. inputs, display, wifi), 
+        //maybe allow full reset
+    }
+    
+    waitForInputClear = true;
+
+    while(true)
+    {
+        UpdateInputs(false);
+        delay(1);   //power saving
+        
+        if (MustWaitForInputClear()) continue;
+        
+        if (KEMPSTONJOYSTICK & BUTTON_ESC
+         || KEMPSTONJOYSTICK & BUTTON_FIRE )    //select
+        {
+            waitForInputClear = true;
+            return -1;
+        }
+    }
+    
+    return -1;
+}
+
+
+inline byte RdZ80(word16 A)        
+{
+  return (A < ROMSIZE ? pgm_read_byte(ROM + A) : RAM[A - ROMSIZE]);
+}
+
+int ICACHE_FLASH_ATTR Debugger()
+{
+    bool keyRepeating = false;
+    unsigned long keyRepeatMillis = -1;
+    char lastPressedKey = 0;
+    bool needRender = true;
+    
+    word16 mem_addr = 0;
+
+    char buf[64];
+    
+    DEBUG_PSTRLN(F("DEBUG"));
+
+    //ToDo: display CPU state (registers), memory, and disassembly
+    //allow standard debug: single stepping, step over/into/out, change memory
+    
+    spiSwitchSet(TFT_CS);
+    
+    zxDisplayTft.fillScreen(TFT_BLACK);
+    zxDisplayTft.setTextFont(0);
+    zxDisplayTft.setTextSize(1);
+    zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
+    zxDisplayTft.setTextDatum(TL_DATUM);
+
+    {
+        strcpy_P(buf, PSTR("Z80 Debugger"));
+        zxDisplayTft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        zxDisplayTft.setTextDatum(TC_DATUM);
+        zxDisplayTft.drawString(buf, 150, 0);
+
+        strcpy_P(buf, PSTR("Spc:Step  Esc:Back"));
+        zxDisplayTft.setTextDatum(MC_DATUM);
+        zxDisplayTft.drawString(buf, 160, 230);
+    }
+    
+    waitForInputClear = true;
+
+    while(true)
+    {
+        if (needRender)
+        {
+            zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
+            zxDisplayTft.setTextDatum(TL_DATUM);
+    
+            sprintf_P(buf, PSTR("AF %04X"), state.AF.W);
+            zxDisplayTft.drawString(buf, 10, 15);
+            sprintf_P(buf, PSTR("BC %04X"), state.BC.W);
+            zxDisplayTft.drawString(buf, 10, 25);
+            sprintf_P(buf, PSTR("DE %04X"), state.DE.W);
+            zxDisplayTft.drawString(buf, 10, 35);
+            sprintf_P(buf, PSTR("HL %04X"), state.HL.W);
+            zxDisplayTft.drawString(buf, 10, 45);
+    
+            sprintf_P(buf, PSTR("IX %04X"), state.IX.W);
+            zxDisplayTft.drawString(buf, 60, 15);
+            sprintf_P(buf, PSTR("IY %04X"), state.IY.W);
+            zxDisplayTft.drawString(buf, 60, 25);
+            sprintf_P(buf, PSTR("PC %04X"), state.PC.W);
+            zxDisplayTft.drawString(buf, 60, 35);
+            sprintf_P(buf, PSTR("SP %04X"), state.SP.W);
+            zxDisplayTft.drawString(buf, 60, 45);
+    
+            sprintf_P(buf, PSTR("AF'%04X"), state.AF1.W);
+            zxDisplayTft.drawString(buf, 110, 15);
+            sprintf_P(buf, PSTR("BC'%04X"), state.BC1.W);
+            zxDisplayTft.drawString(buf, 110, 25);
+            sprintf_P(buf, PSTR("DE'%04X"), state.DE1.W);
+            zxDisplayTft.drawString(buf, 110, 35);
+            sprintf_P(buf, PSTR("HL'%04X"), state.HL1.W);
+            zxDisplayTft.drawString(buf, 110, 45);
+        
+            sprintf_P(buf, PSTR("IFF %02X"), state.IFF);
+            zxDisplayTft.drawString(buf, 10, 60);
+            sprintf_P(buf, PSTR("I %02X"), state.I);
+            zxDisplayTft.drawString(buf, 60, 60);
+            sprintf_P(buf, PSTR("R %02X"), state.R);
+            zxDisplayTft.drawString(buf, 110, 60);
+
+            //code around PC
+            for(int i=0; i<14; i++)
+            {
+                word16 addr = state.PC.W + i;
+                byte b = RdZ80(addr);
+                sprintf_P(buf, PSTR("%02X"), b);
+                zxDisplayTft.drawString(buf, 10, 80+i*10);
+            }
+
+            //memory
+            sprintf_P(buf, PSTR("%04X"), mem_addr);
+            zxDisplayTft.drawString(buf, 170, 15);
+            for(int y=0; y<20; y++)
+            {
+                for(int x=0; x<8; x++)
+                {
+                    word16 addr = mem_addr + y*8+x;
+                    byte b = RdZ80(addr);
+                    sprintf_P(buf, PSTR("%02X"), b);
+                    zxDisplayTft.drawString(buf, 170+x*16, 25+y*10);
+                }
+            }
+        }
+        
+        unsigned long now = millis();
+        UpdateInputs(false);
+        delay(1);   //power saving
+            
+        if (MustWaitForInputClear())
+        {
+            if (now < keyRepeatMillis || keyRepeatMillis <= 0)
+                continue;   //keep waiting
+            //exceeded, start repeating
+            keyRepeating = true;
+        } else
+        {
+            keyRepeating = false;
+        }
+
+        char pressedKey = GetPressedKey();
+        switch(pressedKey)
+        {
+            case 0: //nothing
+                break;
+                
+            case ' ':   //step
+                DEBUG_PSTRLN(F("step"));
+                ExecZ80(&state, 1);
+                waitForInputClear = true;
+                keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+                break;
+            
+            default:
+                waitForInputClear = true;
+                keyRepeatMillis = -1;
+                break;
+        }
+        lastPressedKey = pressedKey;
+
+        if (KEMPSTONJOYSTICK & BUTTON_UP)
+        {
+            mem_addr -= 8;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+        }
+        if (KEMPSTONJOYSTICK & BUTTON_DOWN)
+        {
+            mem_addr += 8;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+        }
+        if (KEMPSTONJOYSTICK & BUTTON_LEFT)
+        {
+            mem_addr -= 8 * 20;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+        }
+        if (KEMPSTONJOYSTICK & BUTTON_RIGHT)
+        {
+            mem_addr += 8 * 20;
+            waitForInputClear = true;
+            keyRepeatMillis = now + (keyRepeating ? 100 : 500);
+        }
+        
+        if (KEMPSTONJOYSTICK & BUTTON_ESC
+         || KEMPSTONJOYSTICK & BUTTON_FIRE )    //select
+        {
+            waitForInputClear = true;
+            return -1;
+        }
+    }
+    
+    return -1;
+}
+
+
+int ICACHE_FLASH_ATTR Test_SD()
+{
+    char buf[64];
+
+    DEBUG_PSTRLN(F("TEST_SD..."));
+
+    zxDisplayStop();
+    
+    spiSwitchSet(SD_CS);
+   
+    //SdFat sd;
+    SdFile dirFile;
+
+    if (sd.begin(SD_CS, SPISettings(
+                  SPI_SPEED_SD,
+                  MSBFIRST,
+                  SPI_MODE0)))
+    {
+        sprintf_P(buf, PSTR("/"));
+        if (dirFile.open(buf, O_RDONLY))   //can do path :) e.g "/DCIM/"
+        {
+            SdFile file;
+   
+            while (file.openNext(&dirFile, O_RDONLY))
+            {
+                file.getName(buf, 64);
+                Serial.println(buf);
+                
+                file.close();
+            }
+
+            dirFile.close();
+        } else
+        {
+            DEBUG_PSTRLN(F("dir.open FAIL"));
+        }
+    } else
+    {
+        DEBUG_PSTRLN(F("sd.begin FAIL"));
+    }
+
+    spiSwitchSet(TFT_CS);
+
+    zxDisplayStart();
+    
+    DEBUG_PSTRLN(F("TEST_SD_END."));    
 }

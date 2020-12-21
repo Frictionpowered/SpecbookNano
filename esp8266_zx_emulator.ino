@@ -20,6 +20,7 @@
 #include "SpiSwitch.h"
 
 extern int MainMenu();
+extern void SD_Setup();
 
 //zx spectrum keyboard buffer (one for each half row, with only the lower 5 bits used)
 // [3] 1->5       6<-0 [4]
@@ -64,6 +65,11 @@ char zxInterruptPending = 0;        //set by zxDisplay interrupt routine
 //could have multiple options, like: None / 1Hz / 50Hz / every loop; all make sense, the latter two to see display performance.
 bool borderCycle = false;
 
+char test_mode = 0;
+
+// initial stack
+char *stack_start;
+
 #ifdef DEBUG_PRINT_K
 const char key2char[] PROGMEM = "^ZXCV???ASDFG???QWERT???12345???09876???POIUY???#LKJH???_sMNB???";
 const char joy2char[] PROGMEM = "rldu*/@";
@@ -77,6 +83,19 @@ void ICACHE_FLASH_ATTR printBin(unsigned char c)
     Serial.print(bitRead(c, b));
   }
 }
+
+void ICACHE_FLASH_ATTR PrintStackSize()
+{
+    char stack;
+
+    DEBUG_PSTR(F("Free heap: "));
+    DEBUG_PRINTLN(ESP.getFreeHeap());
+    DEBUG_PSTR(F("Free stack: "));
+    DEBUG_PRINTLN(ESP.getFreeContStack());
+    DEBUG_PSTR(F("Stack size: "));
+    DEBUG_PRINTLN(stack_start - &stack);
+}
+
 
 #define SCAN_I2C
 
@@ -313,9 +332,13 @@ void ICACHE_FLASH_ATTR SpiffsTest()
 {
     DEBUG_PSTRLN(F("spiffs test start"));
 
-  DEBUG_PSTRLN(F("Heap size: "));
-  Serial.println(ESP.getFreeHeap());
-  
+    DEBUG_PSTRLN(F("Heap size: "));
+    DEBUG_PRINTLN(ESP.getFreeHeap());
+
+    //SPIFFSConfig cfg;
+    //cfg.setAutoFormat(false);
+    //SPIFFS.setConfig(cfg);  
+    
     if (!SPIFFS.begin())
     {
         DEBUG_PSTRLN(F("spiffs begin fail"));
@@ -395,6 +418,10 @@ void ICACHE_FLASH_ATTR WiFi_Connect()
 ///////////////////////////////////////////////////////////////////////////////////
 void ICACHE_FLASH_ATTR setup() 
 {
+    // init record of stack
+    char stack;
+    stack_start = &stack;
+    
 #ifdef DEBUG_PRINT
   Serial.begin(115200);
 #endif
@@ -442,27 +469,33 @@ void ICACHE_FLASH_ATTR setup()
     if (mux_error != 0)
         DEBUG_PSTRLN("Multiplexer Error!");
 
-  DEBUG_PSTRLN(F("Setup_CPU"));
+    DEBUG_PSTRLN(F("Setup_CPU"));
+    
+    //SET 160MHZ
+    REG_SET_BIT(0x3ff00014, BIT(0));
+    ets_update_cpu_frequency(160);
+    DEBUG_PSTRLN(F("Setup_160"));
+    
+    DEBUG_PSTRLN(F("Setup_SPI"));
+    spiSwitchSetup();
 
-  //SET 160MHZ
-  REG_SET_BIT(0x3ff00014, BIT(0));
-  ets_update_cpu_frequency(160);
-  DEBUG_PSTRLN(F("Setup_160"));
-
-  DEBUG_PSTRLN(F("Setup_SPI"));
-  spiSwitchSetup();
-
-  //DEBUG_PSTRLN(F("Setup_Snd"));
-  zxSoundSetup();
-
-  DEBUG_PSTRLN(F("Setup_Z80"));
-  ResetZ80(&state);
-
-  DEBUG_PSTRLN(F("Setup_Display"));
-  zxDisplaySetup(RAM);
-
-  DEBUG_PSTRLN(F("Heap size: "));
-  Serial.println(ESP.getFreeHeap());
+    DEBUG_PSTRLN(F("Setup_SD"));
+    SD_Setup();
+    
+    //DEBUG_PSTRLN(F("Setup_Snd"));
+    zxSoundSetup();
+    
+    DEBUG_PSTRLN(F("Setup_Z80"));
+    ResetZ80(&state);
+    
+    DEBUG_PSTRLN(F("Setup_Display"));
+    zxDisplaySetup(RAM);
+    
+    //DEBUG_PSTRLN(F("Free heap: "));
+    //DEBUG_PRINTLN(ESP.getFreeHeap());
+    //DEBUG_PSTRLN(F("Free stack: "));
+    //DEBUG_PRINTLN(ESP.getFreeContStack());
+    PrintStackSize();
 }
 
 
@@ -579,6 +612,64 @@ void ICACHE_FLASH_ATTR ProcessSerialKey(char cRead)
     }
 }
 
+void ICACHE_FLASH_ATTR RecvCommand() 
+{
+    static int numChars = 32;
+    char receivedChars[numChars];
+    
+    byte ndx = 0;
+    char endMarker = '\n';
+    bool newData = false;
+
+    DEBUG_PSTR("Command...");
+  
+    while (Serial.available() > 0 && !newData)
+    {
+        char rc = Serial.read();
+
+        if (rc == endMarker) 
+        {
+            receivedChars[ndx] = '\0'; // terminate the string
+            ndx = 0;
+            newData = true;
+            break;
+        } else
+        {
+            receivedChars[ndx++] = rc;
+            if (ndx >= numChars)
+            {
+                ndx = numChars - 1;
+            }
+        }
+    }
+    
+    if (newData)
+    {
+        DEBUG_PSTR(":");
+        Serial.println(receivedChars);
+        if (!strcmp_P(receivedChars, PSTR("test_input")))
+        {
+            test_mode = 1;
+        } else
+        if (!strcmp_P(receivedChars, PSTR("test_sd")))
+        {
+            test_mode = 2;
+        } else
+        if (!strcmp_P(receivedChars, PSTR("test_sound")))
+        {
+            //test_mode = 3;
+        } else
+        if (!strcmp_P(receivedChars, PSTR("test_end")))
+        {
+            test_mode = 0;
+        } else
+        if (!strcmp_P(receivedChars, PSTR("reset")))
+        {
+            ESP.reset();
+        }
+    }
+}
+
 void ICACHE_FLASH_ATTR UpdateSerialKeyboard(unsigned long ulNow)
 {
   //simulation of zx keyboard from serial data
@@ -607,6 +698,12 @@ void ICACHE_FLASH_ATTR UpdateSerialKeyboard(unsigned long ulNow)
   if (Serial.available())
   {
     char cRead = Serial.read();
+
+    if (cRead=='/')
+    {//command mode
+        RecvCommand();
+        return;
+    }
     
     DEBUG_PSTR("Key ");
     Serial.println(cRead);
@@ -794,6 +891,46 @@ int ICACHE_FLASH_ATTR UpdateInputs(bool doJoystick)   //it probably starts in ra
     return 0;
 }
 
+void ICACHE_FLASH_ATTR Test_Inputs()
+{
+    char lastPressedKey = 0;
+    unsigned char lastKempston = 0;
+    char buf[16];
+
+    DEBUG_PSTRLN(F("TEST_INPUTS..."));
+    
+    while(test_mode)
+    {
+        UpdateInputs(true);
+
+        char c = GetPressedKey();
+        if (lastPressedKey != c)
+        {
+            char toPrint = lastPressedKey <= 3 ? c : lastPressedKey;
+            //ToDo: if it's a special character (e.g. enter, space, sym, caps), replace it with a name
+            if (lastPressedKey <= 3)
+            {
+                sprintf_P(buf, PSTR("%c ON"), toPrint);
+            } else
+            {
+                sprintf_P(buf, PSTR("%c OFF"), toPrint);
+            }
+            Serial.println(buf);
+        }
+        lastPressedKey = c;
+        
+        if (lastKempston != KEMPSTONJOYSTICK)
+        {
+            sprintf_P(buf, PSTR("Kempston %02X"), KEMPSTONJOYSTICK);
+            Serial.println(buf);
+        }
+        lastKempston = KEMPSTONJOYSTICK;
+    }
+    
+    DEBUG_PSTRLN(F("TEST_INPUTS_END."));
+}
+
+extern int Test_SD();
 
 ///////////////////////////////////////////////////////////////////////////////////
 void loop() 
@@ -825,6 +962,20 @@ void loop()
     delay(100);
     //return;
 #endif
+
+    switch (test_mode)
+    {
+        case 1:
+            Test_Inputs();
+            test_mode = 0;
+            break;
+        case 2:
+            Test_SD();
+            test_mode = 0;
+            break;
+        default:
+            break;
+    }
     
     //ESP.wdtFeed(); // feeds the watchdog (added trying to make it run on wemos D1 mini; was fine on NodeMCU without it)
     //delay(1000);
@@ -841,16 +992,24 @@ void loop()
         zxDisplayStop();
         MainMenu();
         zxDisplayStart();
+        DEBUG_PSTRLN("EMU");
         
+        //DEBUG_PSTRLN(F("Free heap: "));
+        //DEBUG_PRINTLN(ESP.getFreeHeap());
+        //DEBUG_PSTRLN(F("Free stack: "));
+        //DEBUG_PRINTLN(ESP.getFreeContStack());
+        PrintStackSize();
         return;
     }
     
+    //DEBUG_PSTRLN("z80");
     ExecZ80(&state, 50000);   //how many cycles to run
         
     if (zxInterruptPending) //set=1 by screen routine at the end of draw
     {
         zxInterruptPending = 0;
-    
+
+        //DEBUG_PSTRLN("int");
         IntZ80(&state, INT_IRQ);
 
 #ifdef BORDERCOLORCYCLE

@@ -20,13 +20,13 @@
 #include "Zxsound.h"
 #include "Z80filedecoder.h" //not pretty, two-way dependency
 
-#define ROMSIZE 16384
-#define RAMSIZE 49152
+#define ROMSIZE 16384   //0x4000
+#define RAMSIZE 49152   //0xC000
 extern unsigned char RAM[];
 extern const unsigned char ROM[];
 extern unsigned char KEY[];
 extern unsigned char KEMPSTONJOYSTICK;
-extern int z80DelayCycle;//delay loop
+extern int z80DelayCycle;   //delay loop
 
 
 // Defines von UB (WICHTIG!!)
@@ -58,11 +58,13 @@ extern "C" {
 #define INT_QUIT    0xFFFE     /* Exit the emulation         */
 
                                /* Bits in Z80 F register:    */
-#define S_FLAG      0x80       /* 1: Result negative         */
-#define Z_FLAG      0x40       /* 1: Result is zero          */
+#define S_FLAG      0x80       /* 1: Sign; result negative   */
+#define Z_FLAG      0x40       /* 1: Zero: result is zero    */
+#define Y_FLAG      0x20       /* 1: Copy of bit 5 of result */
 #define H_FLAG      0x10       /* 1: Halfcarry/Halfborrow    */
-#define P_FLAG      0x04       /* 1: Result is even          */
-#define V_FLAG      0x04       /* 1: Overflow occured        */
+#define X_FLAG      0x08       /* 1: Copy of bit 3 of result */
+#define P_FLAG      0x04       /* 1: Parity (result is even) */
+#define V_FLAG      0x04       /* 1: Overflow occured        */     // same as P_FLAG!!!
 #define N_FLAG      0x02       /* 1: Subtraction occured     */
 #define C_FLAG      0x01       /* 1: Carry/Borrow occured    */
 
@@ -75,7 +77,7 @@ extern "C" {
 #define IFF_HALT    0x80       /* 1: CPU HALTed              */
 
 /** Simple Datatypes *****************************************/
-/** NOTICE: sizeof(byte)=1 and sizeof(word16)=2               **/
+/** NOTICE: sizeof(byte)=1 and sizeof(word16)=2             **/
 /*************************************************************/
 #ifndef BYTE_TYPE_DEFINED
 #define BYTE_TYPE_DEFINED
@@ -89,7 +91,7 @@ typedef int8_t offset;
 
 /** Structured Datatypes *************************************/
 /** NOTICE: #define LSB_FIRST for machines where least      **/
-/**         signifcant byte goes first.                     **/
+/**         significant byte goes first.                    **/
 /*************************************************************/
 typedef union
 {

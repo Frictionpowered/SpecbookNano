@@ -249,7 +249,7 @@ do
 while (R->BC.W); //ab01 &&(R->ICount>0));
 R->AF.B.l &= ~(N_FLAG | H_FLAG | P_FLAG);
 if (R->BC.W) {
-  R->AF.B.l |= N_FLAG;
+  R->AF.B.l |= N_FLAG;  //Denes: might be P_FLAG
   R->PC.W -= 2;
 }
 else R->ICount += 5;
@@ -271,7 +271,7 @@ do
 while (R->BC.W);//ab01 && (R->ICount > 0));
   R->AF.B.l &= ~(N_FLAG | H_FLAG | P_FLAG);
 if (R->BC.W) {
-  R->AF.B.l |= N_FLAG;
+  R->AF.B.l |= N_FLAG;  //Denes: might be P_FLAG
   R->PC.W -= 2;
 }
 else R->ICount += 5;

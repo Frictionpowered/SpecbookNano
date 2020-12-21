@@ -118,10 +118,10 @@ typedef struct __attribute((__packed__))
 #define BUFFERSIZE 1024   //the minimum for the z80file load/save to work as is, 1024 bytes, used for file decoding and directory 
 
 
-int  z80FileLoad(SdFile *file, unsigned char BUFFER[], uint16_t bufferSize);
-int  z80FileSave(SdFile *file, unsigned char BUFFER[], uint16_t bufferSize);
+int  z80FileLoad(SdFile *file, unsigned char *BUFFER, uint16_t bufferSize);
+int  z80FileSave(SdFile *file, unsigned char *BUFFER, uint16_t bufferSize);
 
-int  SnaFileLoad(SdFile *file, unsigned char BUFFER[], uint16_t bufferSize);
+int  SnaFileLoad(SdFile *file, unsigned char *BUFFER, uint16_t bufferSize);
 
 
 #endif

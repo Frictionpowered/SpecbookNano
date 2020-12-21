@@ -37,11 +37,13 @@
 #define RdZ80 RDZ80
 #define WrZ80 WRZ80
 
-INLINE byte RdZ80(word16 A)        {
+INLINE byte RdZ80(word16 A)        
+{
   //return (A < ROMSIZE ?  ROM[A]  : RAM[A - ROMSIZE]);
   return (A < ROMSIZE ? pgm_read_byte(ROM + A) : RAM[A - ROMSIZE]);
 }
-INLINE void WrZ80(word16 A, byte V) {
+INLINE void WrZ80(word16 A, byte V) 
+{
 //  if (A >= ROMSIZE && A < (ROMSIZE + RAMSIZE)) RAM[A - ROMSIZE] = V;
   if (A >= ROMSIZE) RAM[A - ROMSIZE] = V;
 }
