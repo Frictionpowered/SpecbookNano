@@ -3,7 +3,7 @@
 
 
 // DON'T FORGET TO UPDATE THE User_Setup.h FILE IN THE LIBRARY
-// best to copy Setup50_ILI9341_ESP8266._h_ into ...\Documents\Arduino\libraries\TFT_eSPI\User_Setups\
+// best to copy Setup50_ILI9341_ESP8266._h_ into .../Documents/Arduino/libraries/TFT_eSPI/User_Setups/
 // change its extension back to .h and included that in User_Setup_Select.h as #include <User_Setups/Setup50_ILI9341_ESP8266.h>
 // or look for these lines:
 //#define ILI9341_DRIVER
@@ -50,10 +50,15 @@
  #define DEBUG_PRINTLN(x)  Serial.println(x)
  //Denes' invention: these ones have ACTUALLY ZERO RAM FOOTPRINT! (using F() string still uses 4 bytes)
  //(x must be a string constant but work with or without F() around it)
- #define DEBUG_PSTR(x) { const char* t = PSTR(x); Serial.print(FPSTR(t)); }
- #define DEBUG_PSTRLN(x) { const char* t = PSTR(x); Serial.println(FPSTR(t)); }
- //#define DEBUG_PRINT(...)  Serial.print(__VA_ARGS__)
- //#define DEBUG_PRINTLN(...)  Serial.println(__VA_ARGS__)
+ #ifndef ESP32
+   #define DEBUG_PSTR(x) { const char* t = PSTR(x); Serial.print(FPSTR(t)); }
+   #define DEBUG_PSTRLN(x) { const char* t = PSTR(x); Serial.println(FPSTR(t)); }
+   //#define DEBUG_PRINT(...)  Serial.print(__VA_ARGS__)
+   //#define DEBUG_PRINTLN(...)  Serial.println(__VA_ARGS__)
+ #else
+   #define DEBUG_PSTR(x)    Serial.print(x)
+   #define DEBUG_PSTRLN(x)    Serial.println(x)
+ #endif
 #else
  #define DEBUG_PRINT(...) {}
  #define DEBUG_PRINTLN(...) {}

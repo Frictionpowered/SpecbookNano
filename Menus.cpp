@@ -74,7 +74,7 @@ extern char GetPressedKey();
 extern bool IsKeyPressed(char row, char col);
 
 
-const int z80DelayCycles[] PROGMEM = {0, 2, 4, 10, 20};
+const int z80DelayCycles[] PROGMEM = {0, 1, 2, 4, 8};
 const int z80TimerFreqs[] PROGMEM = {10, 25, 50, 75, 100};
 
 
@@ -125,13 +125,34 @@ void ICACHE_FLASH_ATTR SD_Setup()
 #define PATH_MAX_LEN    64
 #define NUM_SHOW_ENTRIES    12
 
+
+int ICACHE_FLASH_ATTR BootMenu()
+{
+    //try to reload last quicksave
+    char fileName[16];
+    strcpy_P(fileName, PSTR("QuickSave.z80"));
+    if (LoadZ80(fileName) == 0)
+    {
+        
+    }
+    return -1;
+}
+
 char ICACHE_FLASH_ATTR MiniMenu()
 {
     //TEMP
     //return Message(PSTR("Paused"));
-    return Message(PSTR("Paused"), PSTR("Fire:Menu  F2:Reload  Esc:Back"));
+    
+    //(try to) quicksave
+    char fileName[16];
+    strcpy_P(fileName, PSTR("QuickSave.z80"));
+    if (SaveZ80(fileName) == 0)
+    {
+        
+    }
+    
+    return Message(PSTR("Paused"), PSTR("Esc:Menu  Fire:Back  F2:Reload"));
 }
-
 
 int ICACHE_FLASH_ATTR MainMenu()
 {
@@ -197,7 +218,7 @@ const char* const cpu_delay_table[] =
             waitForInputClear = true;
         } else
         if (first == (char)-1 && KEMPSTONJOYSTICK == BUTTON_FIRE2)
-        {//ToDo: load last file
+        {//load last file
             char fileName[128];
             int loadedLen = LoadBuffer(F("LastPath.txt"), fileName, 128);
             if (loadedLen > 0)
@@ -384,6 +405,7 @@ const char* const cpu_delay_table[] =
                     fileName[9] = (char)('1' + i);
                     if (SaveZ80(fileName) == 0)
                     {
+                        waitForInputClear = true;
                         while (MustWaitForInputClear())
                         {
                             UpdateInputs(false);
@@ -401,6 +423,7 @@ const char* const cpu_delay_table[] =
                     fileName[9] = (char)('1' + i);
                     if (LoadZ80(fileName) == 0)
                     {
+                        waitForInputClear = true;
                         while (MustWaitForInputClear())
                         {
                             UpdateInputs(false);
@@ -537,7 +560,7 @@ const char* const cpu_delay_table[] =
                     }
                     break;
                     
-                case 12:
+                case 11:
                     ResetZ80(&state);
                     return -1;  //also return and watch the memory test
                     //break;
@@ -1617,7 +1640,7 @@ char ICACHE_FLASH_ATTR Message(const char* str1, const char* str2, bool wait)
 
 char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
 {
-    char buf[128];
+    //char buf[64];
 
     zxDisplayTft.setTextFont(0);
     zxDisplayTft.setTextSize(1);
@@ -1651,6 +1674,7 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
     char lastKey = 0;
     while(true)
     {
+        zxDisplayTft.fillRect(x0, 120, w, h, TFT_BLACK);
         zxDisplayTft.drawString(inbuf, x0, 120);
     
         zxDisplayTft.drawString("_", x0 + CHAR_WIDTH*curPos, 120);

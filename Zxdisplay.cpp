@@ -100,25 +100,6 @@ void zxDisplaySetIntFrequency(int freqHz)
 }
 
 
-//start SPI transfer. wait for other transfer pending
-void zxDisplayStartWrite()
-{
-  while (SPI1CMD & SPIBUSY) {};
-  
-  spiSwitchSet(TFT_CS);
-  int bitcount = 64 * 8 - 1;//always 32 pixels = 64 bytes at a time
-  uint32_t mask = ~((SPIMMOSI << SPILMOSI) | (SPIMMISO << SPILMISO));
-
-  SPI1U1 = (SPI1U1 & mask) | (bitcount << SPILMOSI) | (bitcount << SPILMISO);
-
-  SPI1CMD |= SPIBUSY;
-}
-
-//before disabling the CS pin spi transfer must be finished
-void zxDisplayStopWrite()
-{
-    while (SPI1CMD & SPIBUSY) {};
-}
 
 //set border colour
 void zxDisplayBorderSet(int i)
@@ -130,7 +111,6 @@ void zxDisplayBorderSet(int i)
 int zxDisplayBorderGet()
 {
     return zxDisplayBorderZ80;
-    //wrong return zxDisplayBorder;
 }
 
 //help function to use serial from z80 core
@@ -158,10 +138,9 @@ void zxDisplayScanPixMem(uint32_t y)
 }
 
 
-//convert zx color to tft color with attribure found at *zxDisplayScanColor
+//convert zx color to tft color from attribute byte at *zxDisplayScanColor
 void zxDisplayScanCol(uint32_t *forecol, uint32_t *backcol)
 {
-
   uint8_t col = *zxDisplayScanColor;
   uint32_t f;
   uint32_t b;
@@ -233,7 +212,27 @@ void zxDisplayOutput(uint8_t pixels, uint32_t forecol, uint32_t backcol, uint8_t
   }
 }
 
-//copy buffer to spi reg
+//start SPI transfer. wait for other transfer pending
+void zxDisplayStartWrite()
+{
+  while (SPI1CMD & SPIBUSY) {};
+  
+  spiSwitchSet(TFT_CS);
+  int bitcount = 64 * 8 - 1;        //always 32 pixels = 64 bytes at a time
+  uint32_t mask = ~((SPIMMOSI << SPILMOSI) | (SPIMMISO << SPILMISO));
+
+  SPI1U1 = (SPI1U1 & mask) | (bitcount << SPILMOSI) | (bitcount << SPILMISO);
+
+  SPI1CMD |= SPIBUSY;
+}
+
+//before disabling the CS pin spi transfer must be finished
+void zxDisplayFinishWrite()
+{
+    while (SPI1CMD & SPIBUSY) {};
+}
+
+//copy buffer to spi registers
 void zxDisplayOutputReg()
 {
   SPI1W0 = zxDisplayBuffer[0];
@@ -265,14 +264,14 @@ void zxDisplayScan()
   if (SPI1CMD & SPIBUSY) return; //dma in use now...
 
   if (zxDisplayY < 24 || zxDisplayY >= (24 + 192))
-  {
-    //border only
+  { //top or bottom line: border only
     zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 0);
     zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 1);
     zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 2);
     zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 3);
-    
-    zxDisplayStopWrite();
+
+    //send buffer (ESP8266)l on ESP32, try TFT_eSPI::pushPixels
+    zxDisplayFinishWrite();
     zxDisplayOutputReg();
     zxDisplayStartWrite();
     
@@ -283,21 +282,21 @@ void zxDisplayScan()
       zxDisplayY++;
       if (zxDisplayY == 240)
       {
-        zxDisplayScanToggle++;//blink!!!
+        zxDisplayScanToggle++;  //blink
         zxDisplayY = 0;
       }
     }
   }
   else
-  {
+  { //normal line
     if (zxDisplayX == 0 || zxDisplayX == (320 - 32)) //
-    { //4 byte from border color and 1 from display color
+    { //left or right of a line: border color
       zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 0);
       zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 1);
       zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 2);
       zxDisplayOutput(0, zxDisplayBorder, zxDisplayBorder, 3);
 
-      zxDisplayStopWrite();
+      zxDisplayFinishWrite();
       zxDisplayOutputReg();
       zxDisplayStartWrite();
 
@@ -308,9 +307,8 @@ void zxDisplayScan()
         zxDisplayY++;
       }
     }
-
     else
-    { //4 byte from screen
+    { //screen area
 
       if (zxDisplayX == 32)
       { //begin of line
@@ -333,15 +331,15 @@ void zxDisplayScan()
       zxDisplayOutput(*zxDisplayScanPixel, forecol, backcol, 3);
       zxDisplayScanPixel++;
       zxDisplayScanColor++;
+      
       zxDisplayX += 32;
       
-      zxDisplayStopWrite();
+      zxDisplayFinishWrite();
       zxDisplayOutputReg();
       zxDisplayStartWrite();
     }
   }
 }
-
 
 
 
@@ -468,7 +466,7 @@ void zxDisplaySetup(unsigned char *RAM)
 void zxDisplayStop()
 {
     zxDisplayDisableInterrupt();
-    zxDisplayStopWrite();
+    zxDisplayFinishWrite();
     spiSwitchReset();
 }
 
@@ -479,7 +477,9 @@ void zxDisplayStart()
     spiSwitchSet(TFT_CS);
     
     zxDisplayStartWrite();
+    
     while (SPI1CMD & SPIBUSY) {};
+    
     zxDisplayTft.setWindow(0, 0, 320 - 1, 240 - 1);   //oddly, this must be AFTER the startwrite
 
     zxDisplayX = 0;

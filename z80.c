@@ -14,6 +14,11 @@
 /*************************************************************/
 #include <Arduino.h>
 
+#ifdef ESP32
+#define PROGMEM
+#define pgm_read_byte(x) *(x)
+#endif
+
 #include "z80.h"
 #include "Tables.h"
 #include <pgmspace.h>

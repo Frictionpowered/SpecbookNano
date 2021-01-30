@@ -19,6 +19,7 @@
 #include "z80.h"
 #include "SpiSwitch.h"
 
+extern int BootMenu();
 extern int MainMenu();
 extern void SD_Setup();
 
@@ -55,7 +56,7 @@ unsigned char RAM[RAMSIZE]; //48k
 
 Z80 state;              //emulator state
 
-int z80DelayCycle = 5;  //feels about the right speed (see options array in Menus.cpp)
+int z80DelayCycle = 2;  //feels about the right speed (see options array in Menus.cpp)
 int timerfreq = 50;     //default
 unsigned char soundenabled = 1;     // 0=off, 1=speaker, 2=speaker+tape
 unsigned char joystickEmulation = 0;
@@ -90,8 +91,10 @@ void ICACHE_FLASH_ATTR PrintStackSize()
 
     DEBUG_PSTR(F("Free heap: "));
     DEBUG_PRINTLN(ESP.getFreeHeap());
+#ifndef ESP32    
     DEBUG_PSTR(F("Free stack: "));
     DEBUG_PRINTLN(ESP.getFreeContStack());
+#endif    
     DEBUG_PSTR(F("Stack size: "));
     DEBUG_PRINTLN(stack_start - &stack);
 }
@@ -139,8 +142,10 @@ void ICACHE_FLASH_ATTR ScanI2C()
       Serial.println(address,HEX);
     }    
 
+#ifndef ESP32
     //stop ESP-12E from resetting
-    ESP.wdtFeed();         
+    ESP.wdtFeed();
+#endif    
   }
   
   if (nDevices == 0)
@@ -431,10 +436,11 @@ void ICACHE_FLASH_ATTR setup()
     //Serial.print(FPSTR(title));
     DEBUG_PSTR("\n\nThe board name is: ");
     Serial.println(ARDUINO_BOARD);  
+#ifndef ESP32    
     //Serial.print(F("Chip ID: 0x"));
     DEBUG_PSTR(F("Chip ID: 0x"));
     Serial.println(ESP.getChipId(), HEX);
-
+#endif
     //Serial.println(F("led = ") + String(LED_BUILTIN));
 
 /*
@@ -496,6 +502,10 @@ void ICACHE_FLASH_ATTR setup()
     //DEBUG_PSTRLN(F("Free stack: "));
     //DEBUG_PRINTLN(ESP.getFreeContStack());
     PrintStackSize();
+
+    zxDisplayStop();
+    BootMenu();
+    zxDisplayStart();
 }
 
 
@@ -665,7 +675,11 @@ void ICACHE_FLASH_ATTR RecvCommand()
         } else
         if (!strcmp_P(receivedChars, PSTR("reset")))
         {
+#ifndef ESP32
             ESP.reset();
+#else
+            ESP.restart();
+#endif            
         }
     }
 }
@@ -788,7 +802,9 @@ bool ICACHE_FLASH_ATTR IsKeyPressed(char key)   //a *bit* slower but more conven
 //(potentially) update all keyboards, multiplex or serial
 int ICACHE_FLASH_ATTR UpdateInputs(bool doJoystick)   //it probably starts in ram anyway
 {
+#ifndef ESP32
     ESP.wdtFeed();
+#endif    
     unsigned long ulNow = millis();
 
     // Update Denes' dual multiplex keyboard
@@ -1022,7 +1038,9 @@ void loop()
             {       //this way it changes every 50000 z80 cycles
               //cnt = 0;
               zxDisplayBorderSet(border);
-              border = (++border) & 0x7;
+              //border = (++border) & 0x7;
+              border++;
+              border = border & 0x7;
             }
         }
 #endif
