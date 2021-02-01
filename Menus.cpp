@@ -48,8 +48,8 @@ int Copy(char* fileName, char* currentPath, char* targetName);
 int ICACHE_FLASH_ATTR ListDirSpiffs(char* currentPath, int startIndex, int numToShow, char* list[], char* ptr);
 #endif
 
-int SaveZ80(const char *fileName);
-int LoadZ80(const char *fileName);
+int SaveZ80(const char *fileName, bool setLast);
+int LoadZ80(const char *fileName, bool setLast);
 int TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize, char* fileName, char* currentPath);
 
 int SaveBuffer(const char *fileName, const char *buffer, int length, bool SD_already_open = false);
@@ -131,7 +131,7 @@ int ICACHE_FLASH_ATTR BootMenu()
     //try to reload last quicksave
     char fileName[16];
     strcpy_P(fileName, PSTR("QuickSave.z80"));
-    if (LoadZ80(fileName) == 0)
+    if (LoadZ80(fileName, false) == 0)
     {
         
     }
@@ -146,7 +146,7 @@ char ICACHE_FLASH_ATTR MiniMenu()
     //(try to) quicksave
     char fileName[16];
     strcpy_P(fileName, PSTR("QuickSave.z80"));
-    if (SaveZ80(fileName) == 0)
+    if (SaveZ80(fileName, false) == 0)
     {
         
     }
@@ -227,7 +227,7 @@ const char* const cpu_delay_table[] =
                 Serial.println(extension);
                 if (!strcasecmp(extension, "Z80"))
                 {
-                    if (LoadZ80(fileName) == 0)
+                    if (LoadZ80(fileName, false) == 0)
                     {
                         while (MustWaitForInputClear())
                         {
@@ -403,7 +403,7 @@ const char* const cpu_delay_table[] =
                     char fileName[16];
                     strcpy_P(fileName, PSTR("QuickSaveX.z80"));
                     fileName[9] = (char)('1' + i);
-                    if (SaveZ80(fileName) == 0)
+                    if (SaveZ80(fileName, true) == 0)
                     {
                         waitForInputClear = true;
                         while (MustWaitForInputClear())
@@ -421,7 +421,7 @@ const char* const cpu_delay_table[] =
                     char fileName[16];
                     strcpy_P(fileName, PSTR("QuickSaveX.z80"));
                     fileName[9] = (char)('1' + i);
-                    if (LoadZ80(fileName) == 0)
+                    if (LoadZ80(fileName, true) == 0)
                     {
                         waitForInputClear = true;
                         while (MustWaitForInputClear())
@@ -556,7 +556,7 @@ const char* const cpu_delay_table[] =
                     strncpy(newName, F("QuickSave.z80"), 50);
                     if(TextEntry(F("Save as"), newName, 50) == 1)
                     {
-                        SaveZ80(newName);
+                        SaveZ80(newName, true);
                     }
                     break;
                     
@@ -1765,7 +1765,7 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
     return 0;   //can't really happen
 }
 
-int ICACHE_FLASH_ATTR SaveZ80(const char *fileName)
+int ICACHE_FLASH_ATTR SaveZ80(const char *fileName, bool setLast)
 {
     unsigned char BUFFER[BUFFERSIZE];    //only allocate it here when it's needed to keep more dynamic memory free
     
@@ -1787,7 +1787,10 @@ int ICACHE_FLASH_ATTR SaveZ80(const char *fileName)
         return -1;
     }
 
-    SaveBuffer(F("LastPath.txt"), fileName, strlen(fileName)+1, true);
+    if (setLast)
+    {
+        SaveBuffer(F("LastPath.txt"), fileName, strlen(fileName)+1, true);
+    }
 
     if (!file.open(fileName, O_TRUNC | O_RDWR | O_CREAT))
     {
@@ -1811,7 +1814,7 @@ int ICACHE_FLASH_ATTR SaveZ80(const char *fileName)
     return 0;
 }
 
-int ICACHE_FLASH_ATTR LoadZ80(const char *fileName)
+int ICACHE_FLASH_ATTR LoadZ80(const char *fileName, bool setLast)
 {
     unsigned char BUFFER[BUFFERSIZE];    //only allocate it here when it's needed to keep more dynamic memory free
     
