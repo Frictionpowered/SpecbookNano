@@ -100,7 +100,7 @@ void ICACHE_FLASH_ATTR PrintStackSize()
 }
 
 
-#define SCAN_I2C
+//#define SCAN_I2C
 
 #ifdef SCAN_I2C
 #include <Wire.h>
@@ -443,6 +443,8 @@ void ICACHE_FLASH_ATTR setup()
 #endif
     //Serial.println(F("led = ") + String(LED_BUILTIN));
 
+    //Serial.printf("%d ms \n", millis());
+
 /*
     //flash size identification for SPIFFS. disabled since SPIFFS doesn't fit into RAM anyway right now
     uint32_t realSize = ESP.getFlashChipRealSize();
@@ -467,10 +469,13 @@ void ICACHE_FLASH_ATTR setup()
 
     Wire.begin(D2, D1);   //SDA, SCL
     Wire.setClock(400000L);
+
+    //Serial.printf("%d ms \n", millis());
     
 #ifdef SCAN_I2C
     ScanI2C();
 #endif
+
     SetupMultiplex();
     if (mux_error != 0)
         DEBUG_PSTRLN("Multiplexer Error!");
@@ -481,21 +486,29 @@ void ICACHE_FLASH_ATTR setup()
     REG_SET_BIT(0x3ff00014, BIT(0));
     ets_update_cpu_frequency(160);
     DEBUG_PSTRLN(F("Setup_160"));
+
+    //Serial.printf("%d ms \n", millis());
     
     DEBUG_PSTRLN(F("Setup_SPI"));
     spiSwitchSetup();
 
     DEBUG_PSTRLN(F("Setup_SD"));
     SD_Setup();
+
+    //Serial.printf("%d ms \n", millis());
     
     //DEBUG_PSTRLN(F("Setup_Snd"));
     zxSoundSetup();
     
     DEBUG_PSTRLN(F("Setup_Z80"));
     ResetZ80(&state);
+
+    //Serial.printf("%d ms \n", millis());
     
     DEBUG_PSTRLN(F("Setup_Display"));
     zxDisplaySetup(RAM);
+
+    //Serial.printf("%d ms \n", millis());
     
     //DEBUG_PSTRLN(F("Free heap: "));
     //DEBUG_PRINTLN(ESP.getFreeHeap());

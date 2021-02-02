@@ -26,13 +26,14 @@ volatile int zxDisplay_timer_counter_50hz = 0;
 //volatile unsigned int zxDisplay_frame_counter_50hz = 0;
 //volatile unsigned int zxDisplay_interrupt_counter = 0;
 
+//oddly, the TFT is not 565 RGB but BRG, and brightness is by no means linear
+#define HW_FOREGROUND_RED       0x0080  //0x03E0
+#define HW_FOREGROUND_GREEN     0x0004  //0x000F
+#define HW_FOREGROUND_BLUE      0x1000  //0x7800
 
-#define HW_FOREGROUND_RED_HI    0x07E0
+#define HW_FOREGROUND_RED_HI    0x03E0
 #define HW_FOREGROUND_GREEN_HI  0x001F
 #define HW_FOREGROUND_BLUE_HI   0xF800
-#define HW_FOREGROUND_RED       0x03E0
-#define HW_FOREGROUND_GREEN     0x000F
-#define HW_FOREGROUND_BLUE      0x7800
 
 #define HW_BLACK   (0)
 #define HW_RED     ( HW_FOREGROUND_RED )
@@ -42,7 +43,8 @@ volatile int zxDisplay_timer_counter_50hz = 0;
 #define HW_MAGENTA ( HW_FOREGROUND_RED | HW_FOREGROUND_BLUE )
 #define HW_CYAN    ( HW_FOREGROUND_BLUE | HW_FOREGROUND_GREEN )
 #define HW_WHITE   ( HW_FOREGROUND_RED | HW_FOREGROUND_BLUE | HW_FOREGROUND_GREEN )
-#define HW_BLACK_HI   0
+
+#define HW_BLACK_HI   (0)
 #define HW_RED_HI     ( HW_FOREGROUND_RED_HI )
 #define HW_GREEN_HI   ( HW_FOREGROUND_GREEN_HI )
 #define HW_YELLOW_HI  ( HW_FOREGROUND_RED_HI | HW_FOREGROUND_GREEN_HI )
@@ -51,6 +53,7 @@ volatile int zxDisplay_timer_counter_50hz = 0;
 #define HW_CYAN_HI    ( HW_FOREGROUND_BLUE_HI | HW_FOREGROUND_GREEN_HI )
 #define HW_WHITE_HI   ( HW_FOREGROUND_RED_HI | HW_FOREGROUND_BLUE_HI | HW_FOREGROUND_GREEN_HI )
 
+//this is not progmem so in theory i could support multiple colour pallettes, loaded from progmem
 static const uint32_t hw_32bits_colors[] =
 {
   HW_BLACK,
@@ -61,6 +64,7 @@ static const uint32_t hw_32bits_colors[] =
   HW_CYAN,
   HW_YELLOW,
   HW_WHITE,
+  
   HW_BLACK_HI,
   HW_BLUE_HI,
   HW_RED_HI,
@@ -176,6 +180,8 @@ void zxDisplayScanCol(uint32_t *forecol, uint32_t *backcol)
 void zxDisplayOutput(uint8_t pixels, uint32_t forecol, uint32_t backcol, uint8_t regbank)
 {
     //testing
+    //forecol = 0xF800;//0x03E0;//0x001F;   //blue, red, green high
+    //backcol = 0x1000;//0x0080;//0x0003;   //blue, red, green low
     //pixels = random(0,0xFF);
     //forecol = random(0,0xFFFF);
     //backcol = random(0,0xFFFF);
@@ -449,12 +455,23 @@ void zxDisplaySetup(unsigned char *RAM)
 
   //test
   //RawRender(F("Display Init"));
-  zxDisplayTft.fillScreen(TFT_GREEN);   //TFT_BLACK
-  zxDisplayTft.setTextSize(1);
-  zxDisplayTft.setTextColor(TFT_MAGENTA, TFT_BLUE);
-  zxDisplayTft.fillRect(0, 0, 320, 240, TFT_BLUE);
-  zxDisplayTft.setTextDatum(TC_DATUM);
-  zxDisplayTft.drawString("Display Init", 160, 120, 4); // Font 4 for fast drawing with background
+  //ToDo: replace this with some logo; it's visible for a fraction of a second
+  //use zxDisplayTft.pushImage
+  //also need a worthy logo or image :oP
+  //the same would be useful to display the keyboard
+  //zxDisplayTft.fillScreen(TFT_GREEN);   //TFT_BLACK
+  //zxDisplayTft.setTextSize(1);
+  //zxDisplayTft.setTextColor(TFT_MAGENTA, TFT_BLUE);
+  //zxDisplayTft.fillRect(0, 0, 320, 240, TFT_BLUE);
+  //zxDisplayTft.setTextDatum(TC_DATUM);
+  //zxDisplayTft.drawString("Display Init", 160, 120, 4); // Font 4 for fast drawing with background
+
+  zxDisplayTft.fillScreen(TFT_BLACK);
+  uint32_t colors[] = {TFT_RED, TFT_YELLOW, TFT_GREEN, TFT_CYAN};
+  for(int i=0; i<4; i++)
+  {
+    zxDisplayTft.fillRect(160 -(2*20 + 40+40/2) + i*(20+40), 120 - 50, 20, 100, colors[i]);
+  }
   
   zxDisplayStartWrite();
   zxDisplayTft.setWindow(0, 0, 320 - 1, 240 - 1);   //oddly, this must be AFTER the startwrite
