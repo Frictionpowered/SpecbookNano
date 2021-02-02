@@ -4,6 +4,8 @@
    The source code for Denes' Wemos D1 Mini ZX Spectrum
    (As shown in https://www.facebook.com/groups/164156683632183/permalink/3351985538182599)
    
+   The latest version of the 3D printed case: https://www.thingiverse.com/thing:4746785
+   
    Inspired by and based on https://github.com/aldolo69/esp8266_zxspectrum_emulator \
    
    acknowledgement of others valuable works: 
