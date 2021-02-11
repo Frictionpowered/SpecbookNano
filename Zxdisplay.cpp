@@ -12,13 +12,16 @@
 TFT_eSPI zxDisplayTft = TFT_eSPI();       // Invoke custom library
 
 
-//#define TIMER_DIVISOR 208//24000 interrupts per second
-//int TIMER_50HZ = 480; // 24000/480 -> 50hz
+//#define TIMER_DIVISOR 208 //24000 interrupts per second ->32 pixels each = 320*240/32 = 2400 calls for a full screen -> 10FPS
+//int TIMER_50HZ = 480;     // 24000/480 -> 50hz
 //Denes test
-#define TIMER_DIVISOR 104//48000 interrupts per second
-int TIMER_50HZ = 960; // 48000/960 -> 50hz
+//these work fine with 40MHz SPI
+#define TIMER_DIVISOR 104   //48000 interrupts per second ->32 pixels each = 320*240/32 = 2400 calls for a full screen -> 20FPS
+int TIMER_50HZ = 960;       // 48000/960 -> 50hz
+//in theory this could decrease screen tearing as 80MHz seems fine for the TFT but it might slow down the emulator
+//#define TIMER_DIVISOR 52   //96000 interrupts per second ->32 pixels each = 320*240/32 = 2400 calls for a full screen -> 40FPS
+//int TIMER_50HZ = 1920;       // 96000/1920 -> 50hz
 
-//every 480 interrupt, timer keyboard is read instead of writing display
 extern char zxInterruptPending;//set to 1 to start interrupt
 
 
@@ -86,15 +89,6 @@ uint8_t zxDisplayBorderZ80 = 0;
 uint8_t *zxDisplayMem;//[32 * 192 + 32 * 24]; //pixel+color
 uint32_t zxDisplayBuffer[16];
 
-/*
-extern "C" 
-{
-  uint32_t zxDisplayColor(int i) 
-  {
-    return hw_32bits_colors[i];
-  }
-}
-*/
 
 
 //changing the timer you can slowdown a game
@@ -117,12 +111,6 @@ int zxDisplayBorderGet()
     return zxDisplayBorderZ80;
 }
 
-//help function to use serial from z80 core
-//void zxDisplayWriteSerial(int i)
-//{
-//  DEBUG_PRINTLN(i);
-//}
-
 
 
 /*
@@ -133,7 +121,6 @@ int zxDisplayBorderGet()
   00yyy000->00000yyy00000
 
   xxyyyzzz->xxyyy000->xxyyy00000
-
 */
 void zxDisplayScanPixMem(uint32_t y)
 {
@@ -351,7 +338,7 @@ void zxDisplayScan()
 
 
 
-//called 24000 times* per second
+//called 24000* times per second (*see on top)
 //every time 32 pixels are copied to tft
 void zxDisplay_timer1_ISR (void) 
 {

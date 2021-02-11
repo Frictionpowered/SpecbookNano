@@ -28,7 +28,8 @@
 
 
 //#define SPI_SPEED_TFT   27000000UL 
-#define SPI_SPEED_TFT   40000000UL 
+//#define SPI_SPEED_TFT   40000000UL 
+#define SPI_SPEED_TFT   80000000UL 
 #define SPI_SPEED_SD    1000000UL
 //#define SPI_SPEED_SD    250000UL    //new, for testing the PCB
 

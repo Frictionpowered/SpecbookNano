@@ -63,6 +63,27 @@ char TextEntry(const char* label, char* inbuf, int maxLength);
 
 void BuildMiniScreen();
 
+
+typedef enum
+{
+    FE_DIR,
+    FE_TXT,
+    FE_JPG,
+    FE_GIF,
+    FE_PNG,
+    FE_BMP,
+    FE_RAW,
+    
+    FE_Z80,
+    FE_SNA,
+    FE_SCR,
+    FE_POK,
+    
+    FE_OTHER
+} FILE_EXT;
+
+FILE_EXT GetFileExt(SdFile *file);
+
 //==============================================================
 #include <TFT_eSPI.h>
 
@@ -128,6 +149,9 @@ void ICACHE_FLASH_ATTR SD_Setup()
 
 int ICACHE_FLASH_ATTR BootMenu()
 {
+    //Test_SD_TFT();
+    //return -1;
+    
     //try to reload last quicksave
     char fileName[16];
     strcpy_P(fileName, PSTR("QuickSave.z80"));
@@ -1889,6 +1913,9 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
 
     //file->close();
 
+    spiSwitchSet(TFT_CS);   //this is only necessary to change SPI speed to high
+    zxDisplayTft.fillScreen(TFT_WHITE);
+
     while(true)
     {
         if (needRead)
@@ -1898,41 +1925,17 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
             DEBUG_PSTR(F("seek "));
             DEBUG_PRINTLN(readStart);
             
-            spiSwitchSet(SD_CS);
-/*            
-            SdFat sd;
-            DEBUG_PSTRLN(F("open_begin"));
-            if (sd.begin(SD_CS, SPISettings(
-                          SPI_SPEED_SD,
-                          MSBFIRST,
-                          SPI_MODE0)))
-            {
-                int openresult = 0;
-                {
-                    char* fullPath = (char*)BUFFER;     //can override BUFFER here, we are going to refill it right after
-                    strncpy(fullPath, currentPath, bufferSize);
-                    strncat(fullPath, fileName, bufferSize);
-            
-                    Serial.println(fullPath);
-                    
-                    DEBUG_PSTRLN(F("open"));
-                    openresult = (file->open(fullPath, O_RDONLY));   //can do path :) e.g "/DCIM/"
-                }
-
-                if (openresult)
-                {
-                    file->seekSet(readStart);
-                    readLength = file->read(BUFFER, bufferSize-1);
-                    BUFFER[bufferSize-1] = 0;
-                    DEBUG_PSTR(F("read "));
-                    DEBUG_PRINTLN(readLength);
-                    file->close();
-                }
+            //spiSwitchSet(SD_CS);
+            //quite slow but works
+            if (!sd.cardBegin(SD_CS, SD_SCK_MHZ(50)))
+            { 
+                return -1;
             }
-*/            
+            
             file->seekSet(readStart);
-            readLength = file->read(BUFFER, bufferSize-1);
+            readLength = file->read(BUFFER, bufferSize-1);        
             BUFFER[bufferSize-1] = 0;
+            
             DEBUG_PSTR(F("read "));
             DEBUG_PRINTLN(readLength);
         }
@@ -1941,12 +1944,13 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
         {
             needRender = false;
             
-            spiSwitchSet(TFT_CS);
-            
-            zxDisplayTft.fillScreen(TFT_BLACK);
+            //spiSwitchSet(TFT_CS);
+
+            //ToDo: don't clear the whole screen; only fill up the end of each line
+            //zxDisplayTft.fillScreen(TFT_WHITE);
             zxDisplayTft.setTextFont(0);
             zxDisplayTft.setTextSize(1);
-            zxDisplayTft.setTextColor(TFT_WHITE, TFT_BLACK);
+            zxDisplayTft.setTextColor(TFT_BLACK, TFT_WHITE);
             zxDisplayTft.setTextDatum(TL_DATUM);
 
 #define lineHeight      10
@@ -1964,24 +1968,33 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
             {
                 if (posY + line*lineHeight >= 240)  //stop if went outside the bottom of screen (take scroll into account)
                     break;
+                //find the end of line    
                 char* eol = strnchr(lineStart, '\n', min(charsLeft, maxCharsPerLine));
                 if (eol == 0)
-                {//not found; render what's left
+                {//not found; long line, render up to maxCharsPerLine
                     eol = lineStart + min(charsLeft, maxCharsPerLine);
                 }
                 char atEol = *eol; //save it to support wrap
-                *eol = 0;
-                if (posY + line*lineHeight >= -lineHeight)   //don't bother rendering above screen (if we scrolled down)
+                *eol = 0;   //terminate string as drawString doesn't have an _n variant
+                
+                int16_t y = posY + line*lineHeight;
+                if (y >= -lineHeight)   //only render if not above screen (if we scrolled down)
                 {
-                    zxDisplayTft.drawString(lineStart, posX, posY + line*lineHeight);
+                    zxDisplayTft.drawString(lineStart, posX, y);
+                    int16_t tw = zxDisplayTft.textWidth(lineStart);
+                    int16_t th = zxDisplayTft.fontHeight();
+                    zxDisplayTft.fillRect(posX + tw, y, 319-(posX+tw), lineHeight, TFT_WHITE);
+                    zxDisplayTft.fillRect(0, y + th, 319, lineHeight-th, TFT_WHITE);
+                    
                     if (wasOffScreen)
                     {
                         wasOffScreen = false;
-                        firstDrawnLineStart = readLineIndex + (int)(lineStart - (char*)BUFFER);
+                        firstDrawnLineStart = readStart + (int)(lineStart - (char*)BUFFER);
                         firstDrawnLineIndex = line;
                     }
                 }
-                *eol = atEol;
+                *eol = atEol;   //restore char
+                
                 line++;
                 if (atEol != '\n')
                     eol--;
@@ -1991,22 +2004,30 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
             //DEBUG_PRINTLN(posY + line*10);
             //DEBUG_PRINTLN(charsLeft);
 
-            //ToDo: if rendering reaches the end (on the bottom, due to posY) AND there's more in the file,
-            // increase readStart (to the beginning of the first rendered line) and trigger a reload of 
-/*            
-* disabled for now; once switched spi to screen the file is lost and the file name was overwritten in the buffer so can't reopen it
-* (switching back and forth will also need solving for an image viewer)
-            if (posY + line*10 < 240 && charsLeft <= 0 && readStart + readLength < filesize)
+            //if rendering reaches the end of the buffer (on the bottom, due to posY) and we know there's more in the file,
+            // increase readStart (to max. the beginning of the first rendered line, not beyond) and trigger a reload from there
+            if (posY + line*10 < 240 && charsLeft <= 0 && readStart + readLength < filesize
+             && readStart != firstDrawnLineStart)
             {
+                DEBUG_PSTR(F("need to read from line "));
+                DEBUG_PRINTLN(firstDrawnLineIndex);
+                DEBUG_PRINTLN(firstDrawnLineStart);
+                
                 readStart = firstDrawnLineStart;
                 readLineIndex = firstDrawnLineIndex;
                 needRead = true;
-                DEBUG_PSTR(F("need to read from "));
-                DEBUG_PRINTLN(readStart);
+                
+                //sometimes it "skips"; seems like long lines confuse the math
             }
-*/            
+            
             // OR, if the rendering (on top) starts lower than the top of the window (due to posY) and there's more before (readStart > 0),
             // decrease loadStart (non-trivial without knowing the length of previous lines, but can make an estimate) and trigger a reload
+            // the problem is, we will not know the new starting line number
+            //...unless we count the lines between the new start and the old start after loading (or reset to 0 but that's a bad idea)
+            if (posY > lineHeight && readStart > 0)
+            {
+                
+            }
         }
         
         unsigned long now = millis();
@@ -2032,28 +2053,28 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
         } else
         if (KEMPSTONJOYSTICK & BUTTON_DOWN )
         {
-            posY -= 5;
+            posY = max(-10000, posY - 5);
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 25 : 250);
             needRender = true;
         } else
         if (KEMPSTONJOYSTICK & BUTTON_UP )
         {
-            posY += 5;
+            posY = min(20, posY + 5);
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 25 : 250);
             needRender = true;
         } else
         if (KEMPSTONJOYSTICK & BUTTON_RIGHT )   //page down
         {
-            posX -= 5;
+            posX = max(-200, posX - 5);
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 25 : 250);
             needRender = true;
         } else
         if (KEMPSTONJOYSTICK & BUTTON_LEFT )    //page up
         {
-            posX += 5;
+            posX = min(20, posX + 5);
             waitForInputClear = true;
             keyRepeatMillis = now + (keyRepeating ? 25 : 250);
             needRender = true;
@@ -2562,4 +2583,37 @@ int ICACHE_FLASH_ATTR Test_SD()
     zxDisplayStart();
     
     DEBUG_PSTRLN(F("TEST_SD_END."));    
+}
+
+
+
+
+FILE_EXT ICACHE_FLASH_ATTR GetFileExt(SdFile *file)
+{
+    if (file->isSubDir())   return FE_DIR;
+    
+    char fileName[64];
+    file->getName(fileName, 64);
+    Serial.println(fileName);
+    char* extension = fileName + strlen(fileName) - 3;
+    Serial.println(extension);
+
+    //if (!strcasecmp(extension, "TXT"))  return FE_TXT;
+    //if (!strcasecmp(extension, "JPG"))  return FE_JPG;
+    //if (!strcasecmp(extension, "GIF"))  return FE_GIF;
+    //if (!strcasecmp(extension, "BMP"))  return FE_BMP;
+    if (!strcmp_P(extension, PSTR("TXT")))  return FE_TXT;
+    if (!strcmp_P(extension, PSTR("JPG")))  return FE_JPG;
+    if (!strcmp_P(extension, PSTR("GIF")))  return FE_GIF;
+    if (!strcmp_P(extension, PSTR("BMP")))  return FE_BMP;
+    if (!strcmp_P(extension, PSTR("Z80")))  return FE_Z80;
+    if (!strcmp_P(extension, PSTR("SNA")))  return FE_SNA;
+    if (!strcmp_P(extension, PSTR("txt")))  return FE_TXT;
+    if (!strcmp_P(extension, PSTR("jpg")))  return FE_JPG;
+    if (!strcmp_P(extension, PSTR("gif")))  return FE_GIF;
+    if (!strcmp_P(extension, PSTR("bmp")))  return FE_BMP;
+    if (!strcmp_P(extension, PSTR("z80")))  return FE_Z80;
+    if (!strcmp_P(extension, PSTR("sna")))  return FE_SNA;
+
+    return FE_OTHER;
 }

@@ -112,7 +112,7 @@ static const byte CyclesXXCB[256] PROGMEM =
    0, 0, 0, 0, 0, 0,23, 0, 0, 0, 0, 0, 0, 0,23, 0,
    0, 0, 0, 0, 0, 0,23, 0, 0, 0, 0, 0, 0, 0,23, 0
 };
-
+/*
 static const byte ZSTable[256] =
 {
   Z_FLAG,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -140,7 +140,7 @@ static const byte ZSTable[256] =
   S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,
   S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG,S_FLAG
 };
-
+*/
 static const byte PZSTable[256] =
 {
   Z_FLAG|P_FLAG,0,0,P_FLAG,0,P_FLAG,P_FLAG,0,

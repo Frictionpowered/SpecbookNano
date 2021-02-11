@@ -92,13 +92,13 @@ break;
 
 case LD_A_I:
 R->AF.B.h = R->I;
-R->AF.B.l = (R->AF.B.l&C_FLAG) | (R->IFF & IFF_2 ? P_FLAG : 0) | ZSTable[R->AF.B.h];
+R->AF.B.l = (R->AF.B.l&C_FLAG) | (R->IFF & IFF_2 ? P_FLAG : 0) | ZSTable(R->AF.B.h);
 break;
 
 case LD_A_R:
 R->R++;
 R->AF.B.h = (byte)(R->R - R->ICount);
-R->AF.B.l = (R->AF.B.l&C_FLAG) | (R->IFF & IFF_2 ? P_FLAG : 0) | ZSTable[R->AF.B.h];
+R->AF.B.l = (R->AF.B.l&C_FLAG) | (R->IFF & IFF_2 ? P_FLAG : 0) | ZSTable(R->AF.B.h);
 break;
 
 case LD_I_A:   R->I = R->AF.B.h; break;
@@ -282,7 +282,7 @@ I = RdZ80(R->HL.W++);
 J.B.l = R->AF.B.h - I;
 --R->BC.W;
 R->AF.B.l =
-  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable[J.B.l] |
+  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable(J.B.l) |
   ((R->AF.B.h ^ I^J.B.l)&H_FLAG) | (R->BC.W ? P_FLAG : 0);
 break;
 
@@ -295,7 +295,7 @@ do
 }
 while (R->BC.W && J.B.l && (R->ICount > 0));
 R->AF.B.l =
-  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable[J.B.l] |
+  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable(J.B.l) |
   ((R->AF.B.h ^ I^J.B.l)&H_FLAG) | (R->BC.W ? P_FLAG : 0);
 if (R->BC.W && J.B.l) R->PC.W -= 2; else R->ICount += 5;
 break;
@@ -305,7 +305,7 @@ I = RdZ80(R->HL.W--);
 J.B.l = R->AF.B.h - I;
 --R->BC.W;
 R->AF.B.l =
-  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable[J.B.l] |
+  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable(J.B.l) |
   ((R->AF.B.h ^ I^J.B.l)&H_FLAG) | (R->BC.W ? P_FLAG : 0);
 break;
 
@@ -318,7 +318,7 @@ do
 }
 while (R->BC.W && J.B.l);
 R->AF.B.l =
-  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable[J.B.l] |
+  N_FLAG | (R->AF.B.l&C_FLAG) | ZSTable(J.B.l) |
   ((R->AF.B.h ^ I^J.B.l)&H_FLAG) | (R->BC.W ? P_FLAG : 0);
 if (R->BC.W && J.B.l) R->PC.W -= 2; else R->ICount += 5;
 break;

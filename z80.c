@@ -151,9 +151,14 @@ void PatchZ80(register Z80 *R)
 #define OpZ80(A) RdZ80(A)
 #endif
 
+//#define PZSTable(x)  PZSTable[x]
+
+//#define ZSTable(x)  ZSTable[x]
+#define ZSTable(x)  (PZSTable[x]&~P_FLAG)
+
 #define S(Fl)        R->AF.B.l|=Fl
 #define R(Fl)        R->AF.B.l&=~(Fl)
-#define FLAGS(Rg,Fl) R->AF.B.l=Fl|ZSTable[Rg]
+#define FLAGS(Rg,Fl) R->AF.B.l=Fl|ZSTable(Rg)
 
 #define M_RLC(Rg)      \
   R->AF.B.l=Rg>>7;Rg=(Rg<<1)|R->AF.B.l;R->AF.B.l|=PZSTable[Rg]
@@ -223,7 +228,7 @@ void PatchZ80(register Z80 *R)
   J.W=R->AF.B.h+Rg;    \
   R->AF.B.l=           \
                        (~(R->AF.B.h^Rg)&(Rg^J.B.l)&0x80? V_FLAG:0)| \
-                       J.B.h|ZSTable[J.B.l]|                        \
+                       J.B.h|ZSTable(J.B.l)|                        \
                        ((R->AF.B.h^Rg^J.B.l)&H_FLAG);               \
   R->AF.B.h=J.B.l
 
@@ -231,7 +236,7 @@ void PatchZ80(register Z80 *R)
   J.W=R->AF.B.h-Rg;    \
   R->AF.B.l=           \
                        ((R->AF.B.h^Rg)&(R->AF.B.h^J.B.l)&0x80? V_FLAG:0)| \
-                       N_FLAG|-J.B.h|ZSTable[J.B.l]|                      \
+                       N_FLAG|-J.B.h|ZSTable(J.B.l)|                      \
                        ((R->AF.B.h^Rg^J.B.l)&H_FLAG);                     \
   R->AF.B.h=J.B.l
 
@@ -239,7 +244,7 @@ void PatchZ80(register Z80 *R)
   J.W=R->AF.B.h+Rg+(R->AF.B.l&C_FLAG); \
   R->AF.B.l=                           \
                                        (~(R->AF.B.h^Rg)&(Rg^J.B.l)&0x80? V_FLAG:0)| \
-                                       J.B.h|ZSTable[J.B.l]|              \
+                                       J.B.h|ZSTable(J.B.l)|              \
                                        ((R->AF.B.h^Rg^J.B.l)&H_FLAG);     \
   R->AF.B.h=J.B.l
 
@@ -247,7 +252,7 @@ void PatchZ80(register Z80 *R)
   J.W=R->AF.B.h-Rg-(R->AF.B.l&C_FLAG); \
   R->AF.B.l=                           \
                                        ((R->AF.B.h^Rg)&(R->AF.B.h^J.B.l)&0x80? V_FLAG:0)| \
-                                       N_FLAG|-J.B.h|ZSTable[J.B.l]|      \
+                                       N_FLAG|-J.B.h|ZSTable(J.B.l)|      \
                                        ((R->AF.B.h^Rg^J.B.l)&H_FLAG);     \
   R->AF.B.h=J.B.l
 
@@ -255,7 +260,7 @@ void PatchZ80(register Z80 *R)
   J.W=R->AF.B.h-Rg;    \
   R->AF.B.l=           \
                        ((R->AF.B.h^Rg)&(R->AF.B.h^J.B.l)&0x80? V_FLAG:0)| \
-                       N_FLAG|-J.B.h|ZSTable[J.B.l]|                      \
+                       N_FLAG|-J.B.h|ZSTable(J.B.l)|                      \
                        ((R->AF.B.h^Rg^J.B.l)&H_FLAG)
 
 #define M_AND(Rg) R->AF.B.h&=Rg;R->AF.B.l=H_FLAG|PZSTable[R->AF.B.h]
@@ -269,13 +274,13 @@ void PatchZ80(register Z80 *R)
 #define M_INC(Rg)       \
   Rg++;                 \
   R->AF.B.l=            \
-                        (R->AF.B.l&C_FLAG)|ZSTable[Rg]|           \
+                        (R->AF.B.l&C_FLAG)|ZSTable(Rg)|           \
                         (Rg==0x80? V_FLAG:0)|(Rg&0x0F? 0:H_FLAG)
 
 #define M_DEC(Rg)       \
   Rg--;                 \
   R->AF.B.l=            \
-                        N_FLAG|(R->AF.B.l&C_FLAG)|ZSTable[Rg]| \
+                        N_FLAG|(R->AF.B.l&C_FLAG)|ZSTable(Rg)| \
                         (Rg==0x7F? V_FLAG:0)|((Rg&0x0F)==0x0F? H_FLAG:0)
 
 #define M_ADDW(Rg1,Rg2) \

@@ -106,7 +106,7 @@ typedef struct __attribute((__packed__))
 //#include "LittleFS.h"      //see https://arduino-esp8266.readthedocs.io/en/latest/filesystem.html
 #endif
 
-#include "SdFat.h"
+//#include "SdFat.h"
 //ToDo: switch to these; test if they allow the SD_CS to be anything
 //problem 1: SdFat library conflicts with SPIFFS :(
 //problem 2: SD library doesn't support long filenames, only 8.3 :(
@@ -114,6 +114,10 @@ typedef struct __attribute((__packed__))
 //#include "SD.h"
 //temp:
 //#define SdFile File
+
+#include "SdFat.h"
+#include "FreeStack.h"
+using namespace sdfat;
 
 #define BUFFERSIZE 1024   //the minimum for the z80file load/save to work as is, 1024 bytes, used for file decoding and directory 
 
