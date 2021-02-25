@@ -52,23 +52,23 @@ const unsigned char ROM[ROMSIZE] PROGMEM =
     #include "zxrom.h" //original rom
 };
 
-unsigned char RAM[RAMSIZE]; //48k
+unsigned char RAM[RAMSIZE]; //48k   //might need to be aligned to 32 bit boundary __attribute__((aligned(4)));
 
 Z80 state;              //emulator state
 
 int z80DelayCycle = 2;  //feels about the right speed (see options array in Menus.cpp)
 int timerfreq = 50;     //default
 unsigned char soundenabled = 1;     // 0=off, 1=speaker, 2=speaker+tape
-unsigned char joystickEmulation = 0;
+unsigned char joystickEmulation = 0;    // joystick type
 
 char zxInterruptPending = 0;        //set by zxDisplay interrupt routine
 
 //could have multiple options, like: None / 1Hz / 50Hz / every loop; all make sense, the latter two to see display performance.
 bool borderCycle = false;
 
-char test_mode = 0;
+char test_mode = 0;     //current test selected via serial command
 
-// initial stack
+// initial stack pointer
 char *stack_start;
 
 #ifdef DEBUG_PRINT_K
@@ -510,10 +510,6 @@ void ICACHE_FLASH_ATTR setup()
 
     //Serial.printf("%d ms \n", millis());
     
-    //DEBUG_PSTRLN(F("Free heap: "));
-    //DEBUG_PRINTLN(ESP.getFreeHeap());
-    //DEBUG_PSTRLN(F("Free stack: "));
-    //DEBUG_PRINTLN(ESP.getFreeContStack());
     PrintStackSize();
 
     zxDisplayStop();
@@ -529,6 +525,8 @@ static unsigned long ulLastKeyboardUpdate = 0;
 static unsigned long ulResetSerialKeyboard = 0;
 static char nextKey = 0;
 
+const char serial_key_table[] PROGMEM = "1234567890qwertyuiopasdfghjkl\\>zxcvbnm< ";
+
 void ICACHE_FLASH_ATTR simulate_key(char cRead, char cCheck, unsigned char cBit, unsigned char k)
 {
   if (cRead == cCheck)
@@ -540,7 +538,6 @@ void ICACHE_FLASH_ATTR simulate_key(char cRead, char cCheck, unsigned char cBit,
   }
 }
 
-const char serial_key_table[] PROGMEM = "1234567890qwertyuiopasdfghjkl\\>zxcvbnm< ";
 
 inline void PressKey(char row, char col)
 {
@@ -570,62 +567,6 @@ void ICACHE_FLASH_ATTR ProcessSerialKey(char cRead)
     if (cRead == 'S') PressKey(3, 8);   //sym
     if (cRead == '_') PressKey(3, 9);   //space
     if (cRead == '#') PressKey(2, 9);   //enter
-    
-/*
-    simulate_key(cRead, '1', BUTTON_1, 3);
-    simulate_key(cRead, '2', BUTTON_2, 3);
-    simulate_key(cRead, '3', BUTTON_3, 3);
-    simulate_key(cRead, '4', BUTTON_4, 3);
-    simulate_key(cRead, '5', BUTTON_5, 3);
-
-    simulate_key(cRead, 'q', BUTTON_Q, 2);
-    simulate_key(cRead, 'w', BUTTON_W, 2);
-    simulate_key(cRead, 'e', BUTTON_E, 2);
-    simulate_key(cRead, 'r', BUTTON_R, 2);
-    simulate_key(cRead, 't', BUTTON_T, 2);
-
-    simulate_key(cRead, 'a', BUTTON_A, 1);
-    simulate_key(cRead, 's', BUTTON_S, 1);
-    simulate_key(cRead, 'd', BUTTON_D, 1);
-    simulate_key(cRead, 'f', BUTTON_F, 1);
-    simulate_key(cRead, 'g', BUTTON_G, 1);
-
-    simulate_key(cRead, '>', BUTTON_CS, 0);
-    simulate_key(cRead, 'z', BUTTON_Z, 0);
-    simulate_key(cRead, 'x', BUTTON_X, 0);
-    simulate_key(cRead, 'c', BUTTON_C, 0);
-    simulate_key(cRead, 'v', BUTTON_V, 0);
-    
-    simulate_key(cRead, '0', BUTTON_0, 4);
-    simulate_key(cRead, '9', BUTTON_9, 4);
-    simulate_key(cRead, '8', BUTTON_8, 4);
-    simulate_key(cRead, '7', BUTTON_7, 4);
-    simulate_key(cRead, '6', BUTTON_6, 4);
-
-    simulate_key(cRead, 'y', BUTTON_Y, 5);
-    simulate_key(cRead, 'u', BUTTON_U, 5);
-    simulate_key(cRead, 'i', BUTTON_I, 5);
-    simulate_key(cRead, 'o', BUTTON_O, 5);
-    simulate_key(cRead, 'p', BUTTON_P, 5);
-
-    simulate_key(cRead, 'h', BUTTON_H, 6);
-    simulate_key(cRead, 'j', BUTTON_J, 6);
-    simulate_key(cRead, 'k', BUTTON_K, 6);
-    simulate_key(cRead, 'l', BUTTON_L, 6);
-    simulate_key(cRead, '\\', BUTTON_EN, 6);
-
-    simulate_key(cRead, 'b', BUTTON_B, 7);
-    simulate_key(cRead, 'n', BUTTON_N, 7);
-    simulate_key(cRead, 'm', BUTTON_M, 7);
-    simulate_key(cRead, '<', BUTTON_SS, 7);
-    simulate_key(cRead, ' ', BUTTON_SP, 7);
-
-    //Denes' alternate keys
-    simulate_key(cRead, 'C', BUTTON_CS, 0);
-    simulate_key(cRead, 'S', BUTTON_SS, 7);
-    simulate_key(cRead, '_', BUTTON_SP, 7);
-    simulate_key(cRead, '#', BUTTON_EN, 6);
-*/
     
     if (cRead == '|' || cRead == ',' || cRead == ';')
     {
@@ -833,7 +774,7 @@ int ICACHE_FLASH_ATTR UpdateInputs(bool doJoystick)   //it probably starts in ra
     UpdateSerialKeyboard(ulNow);
 #endif
     
-    //if (ulNow > ulLastKeyboardUpdate + 20  //50 times a second
+
 #ifdef SERIAL_KEYBOARD    
     if (ulResetSerialKeyboard != 0)       //try not to interfere with serial keyboard; wait
     {
@@ -1023,10 +964,6 @@ void loop()
         zxDisplayStart();
         DEBUG_PSTRLN("EMU");
         
-        //DEBUG_PSTRLN(F("Free heap: "));
-        //DEBUG_PRINTLN(ESP.getFreeHeap());
-        //DEBUG_PSTRLN(F("Free stack: "));
-        //DEBUG_PRINTLN(ESP.getFreeContStack());
         PrintStackSize();
         return;
     }

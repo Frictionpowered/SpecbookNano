@@ -8,6 +8,7 @@
 
 #include "Z80filedecoder.h"
 
+#include "TJpg_Decoder.h"
 
 extern Z80 state;
 //extern const unsigned char ROM[];
@@ -24,6 +25,8 @@ extern int16_t batteryPercent;
 extern int16_t batteryMilliVolts;
 
 extern bool borderCycle;
+
+bool mustReload = false;
 
 extern uint8_t zxDisplayScanToggle;
 
@@ -50,10 +53,12 @@ int ICACHE_FLASH_ATTR ListDirSpiffs(char* currentPath, int startIndex, int numTo
 
 int SaveZ80(const char *fileName, bool setLast);
 int LoadZ80(const char *fileName, bool setLast);
-int TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize, char* fileName, char* currentPath);
 
-int SaveBuffer(const char *fileName, const char *buffer, int length, bool SD_already_open = false);
-int LoadBuffer(const char *fileName, char *buffer, int maxLength);
+int TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize);
+int JpegViewer(SdFile *file, unsigned char *BUFFER, int bufferSize);
+
+int SaveBuffer(const char *fileName, const char *BUFFER, int length, bool SD_already_open = false);
+int LoadBuffer(const char *fileName, char *BUFFER, int maxLength);
 
 char MessageInput();
 char Message(const char *text, bool wait = true);
@@ -82,7 +87,7 @@ typedef enum
     FE_OTHER
 } FILE_EXT;
 
-FILE_EXT GetFileExt(SdFile *file);
+FILE_EXT GetFileExt(SdFile* file, char* extension);
 
 //==============================================================
 #include <TFT_eSPI.h>
@@ -98,42 +103,24 @@ extern bool IsKeyPressed(char row, char col);
 const int z80DelayCycles[] PROGMEM = {0, 1, 2, 4, 8};
 const int z80TimerFreqs[] PROGMEM = {10, 25, 50, 75, 100};
 
-
+//static instance, uses less memory
 SdFat sd;
+
+#define PATH_MAX_LEN    64
+#define NUM_SHOW_ENTRIES    12
+
+
 
 void ICACHE_FLASH_ATTR SD_Setup()
 {
     spiSwitchSet(SD_CS);
    
-    //SdFat sd;
-
     if (sd.begin(SD_CS, SPISettings(
                   SPI_SPEED_SD,
                   MSBFIRST,
                   SPI_MODE0)))
     {
         DEBUG_PSTRLN(F("sd.begin OK"));
-       
-/*        sprintf_P(buf, PSTR("/"));
-        if (dirFile.open(buf, O_RDONLY))   //can do path :) e.g "/DCIM/"
-        {
-            SdFile file;
-   
-            while (file.openNext(&dirFile, O_RDONLY))
-            {
-                file.getName(buf, 64);
-                Serial.println(buf);
-                
-                file.close();
-            }
-
-            dirFile.close();
-            
-        } else
-        {
-            DEBUG_PSTRLN(F("dir.open FAIL"));
-        }
-*/
     } else
     {
         DEBUG_PSTRLN(F("sd.begin FAIL"));
@@ -141,10 +128,6 @@ void ICACHE_FLASH_ATTR SD_Setup()
     
     spiSwitchReset();
 }
-
-
-#define PATH_MAX_LEN    64
-#define NUM_SHOW_ENTRIES    12
 
 
 int ICACHE_FLASH_ATTR BootMenu()
@@ -231,6 +214,8 @@ const char* const cpu_delay_table[] =
     unsigned long keyRepeatMillis = -1;
     char lastPressedKey = 0;
 
+    mustReload = false;
+    
     zxSoundSet(0);
 
     {
@@ -249,7 +234,9 @@ const char* const cpu_delay_table[] =
             {
                 char* extension = fileName + strlen(fileName) - 3;
                 Serial.println(extension);
-                if (!strcasecmp(extension, "Z80"))
+                //if (!strcasecmp(extension, "Z80"))
+                if (!strcmp_P(extension, PSTR("Z80"))
+                 || !strcmp_P(extension, PSTR("z80")))
                 {
                     if (LoadZ80(fileName, false) == 0)
                     {
@@ -269,10 +256,6 @@ const char* const cpu_delay_table[] =
         }
     }
 
-    //DEBUG_PSTRLN(F("Free heap: "));
-    //DEBUG_PRINTLN(ESP.getFreeHeap());
-    //DEBUG_PSTRLN(F("Free stack: "));
-    //DEBUG_PRINTLN(ESP.getFreeContStack());
     PrintStackSize();
         
     while(true)
@@ -341,8 +324,7 @@ const char* const cpu_delay_table[] =
                         zxDisplayTft.drawRect(3+i*35, 190-1, 32+2, 24+2, TFT_WHITE);
                     }
 
-                    zxDisplayTft.setTextColor(TFT_YELLOW, TFT_TRANSPARENT)
-                    ;
+                    zxDisplayTft.setTextColor(TFT_YELLOW, TFT_TRANSPARENT);
                     uint16_t bits = FindQuicksaves();
                     
                     for(int i=0; i<9; i++)
@@ -469,6 +451,14 @@ const char* const cpu_delay_table[] =
         {
             waitForInputClear = true;
             needRender = true;
+            if (mustReload)
+            {
+                char fileName[16];
+                strcpy_P(fileName, PSTR("QuickSave.z80"));
+                if (LoadZ80(fileName, false) == 0)
+                {
+                }
+            }
             return -1;
         } else
         if (KEMPSTONJOYSTICK & BUTTON_UP
@@ -567,7 +557,6 @@ const char* const cpu_delay_table[] =
                     break;
                     
                 case 8:
-                    //borderCycle = !borderCycle;
                     Debugger();
                     break;
                     
@@ -649,7 +638,6 @@ int ICACHE_FLASH_ATTR ListDir(const char* currentPath, int startIndex, int numTo
     
     spiSwitchSet(SD_CS);
    
-    //SdFat sd;
     SdFile dirFile;
     
     if (sd.begin(SD_CS, SPISettings(
@@ -729,7 +717,6 @@ int ICACHE_FLASH_ATTR FindFileIndex(const char* currentPath, const char* fileNam
     
     spiSwitchSet(SD_CS);
    
-    //SdFat sd;
     SdFile dirFile;
     
     if (sd.begin(SD_CS, SPISettings(
@@ -784,7 +771,6 @@ uint16_t ICACHE_FLASH_ATTR FindQuicksaves()
 
     spiSwitchSet(SD_CS);
    
-    //SdFat sd;
     SdFile dirFile;
     
     if (!sd.begin(SD_CS, SPISettings(
@@ -868,8 +854,6 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char* BUF
 {
     spiSwitchSet(SD_CS);
     
-    //SdFat sd;   //this seems to take 624 bytes on the stack
-
     DEBUG_PSTRLN(F("open_begin"));
     PrintStackSize();
     
@@ -880,27 +864,43 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char* BUF
     {
         SdFile file;
         
-        char* extension = fileName + strlen(fileName) - 3;
-        Serial.println(extension);
-        
+        //this way the full path filename doesn't take stack mem while absolutely needed
         int openresult = OpenSub(file, fileName, currentPath);
-        {
-            //char fullPath[256]; //only allocated while absolutely necessary
-            //strncpy(fullPath, currentPath, 256);
-            //strncat(fullPath, fileName, 256);
-    
-            //Serial.println(fullPath);
-
-            //DEBUG_PSTRLN(F("open"));
-            //openresult = file.open(fullPath, O_RDONLY);   //can do path :) e.g "/DCIM/"
-
-            //have to save it here as it's in the BUFFER and will be overwritten
-            //if (openresult && !file.isSubDir())
-            //    SaveBuffer(F("LastPath.txt"), fullPath, strlen(fullPath)+1, true);
-        }
 
         if (openresult)
         {
+            char* extension = fileName + strlen(fileName) - 3;
+            Serial.println(extension);
+            
+            switch(GetFileExt(&file, extension))
+            {
+                case FE_DIR:
+                    break;
+                case FE_Z80:
+                    break;
+                case FE_SNA:
+                    break;
+                case FE_SCR:
+                    break;
+                case FE_POK:
+                    break;
+                case FE_TXT:
+                    break;
+                    
+                case FE_JPG:
+                    mustReload = true;
+                    JpegViewer(&file, RAM, RAMSIZE);// BUFFER, BUFFERSIZE);
+                    file.close();
+                    PrintStackSize();
+                    spiSwitchSet(TFT_CS);
+                    //ToDo: set a flag to reload QuickSave before returning to the emulator as we used RAM as buffer
+                    return 0;
+                    break;
+                    
+                default:
+                    break;    
+            }
+            
           if (file.isSubDir())
             {//dir: enter
                 DEBUG_PSTRLN(F("Dir enter "));
@@ -936,9 +936,9 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char* BUF
                 spiSwitchSet(TFT_CS);
                 return 1;
             } else
-            if (!strcasecmp(extension, "SNA"))
-            //if (!strcmp_P(extension, PSTR("SNA"))
-            // || !strcmp_P(extension, PSTR("sna")))
+            //if (!strcasecmp(extension, "SNA"))
+            if (!strcmp_P(extension, PSTR("SNA"))
+             || !strcmp_P(extension, PSTR("sna")))
             {//snapshot
                 DEBUG_PSTRLN(F(".SNA load "));
                 SnaFileLoad(&file, BUFFER, BUFFERSIZE);
@@ -955,10 +955,8 @@ int ICACHE_FLASH_ATTR Open(char* fileName, char* currentPath, unsigned char* BUF
              || !strcmp_P(extension, PSTR("TXT")))
             {
                 DEBUG_PSTRLN(F(".TXT viewer "));
-                //TextViewer(&file, BUFFER);
                 int pathLen = strlen(currentPath);
-                //filename is destroyed here
-                TextViewer(&file, BUFFER + pathLen+1, BUFFERSIZE - (pathLen+1), fileName, currentPath);
+                TextViewer(&file, BUFFER + pathLen+1, BUFFERSIZE - (pathLen+1));
                 
                 DEBUG_PSTRLN(F("close"));
                 file.close();
@@ -982,8 +980,6 @@ int ICACHE_FLASH_ATTR Delete(char* fileName, char* currentPath)
 {
     spiSwitchSet(SD_CS);
     
-    //SdFat sd;
-
     DEBUG_PSTRLN(F("delete_begin"));
     if (sd.begin(SD_CS, SPISettings(
                   SPI_SPEED_SD,
@@ -1076,7 +1072,7 @@ int ICACHE_FLASH_ATTR ListDirSpiffs(char* currentPath, int startIndex, int numTo
 
     SPIFFS.end();
     
-    Serial.print("num entries:");
+    DEBUG_PSTR(F("num entries:"));
     Serial.println(numEntries, DEC);
     return numEntries;  //number of all files in the folder
 }
@@ -1774,6 +1770,7 @@ char ICACHE_FLASH_ATTR TextEntry(const char* label, char* inbuf, int maxLength)
                 break;
                 
             default:
+                //ToDo: INSERT mode instead! this is replace.
                 if (strlen(inbuf) < maxLength-1)
                 {
                     inbuf[curPos++] = lastKey;
@@ -1892,7 +1889,7 @@ __inline char* strnchr(char* string, char chr, int maxLength)
     return 0;
 }
 
-int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize, char* fileName, char* currentPath)
+int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int bufferSize)
 {
     int filesize = file->fileSize();
     DEBUG_PRINTLN(filesize);
@@ -2083,6 +2080,8 @@ int ICACHE_FLASH_ATTR TextViewer(SdFile *file, unsigned char *BUFFER, int buffer
     
     return 0;
 }
+
+
 
 //return 0 if success
 int ICACHE_FLASH_ATTR SaveBuffer(const char *fileName, const char *buf, int len, bool SD_already_open)
@@ -2588,15 +2587,15 @@ int ICACHE_FLASH_ATTR Test_SD()
 
 
 
-FILE_EXT ICACHE_FLASH_ATTR GetFileExt(SdFile *file)
+FILE_EXT ICACHE_FLASH_ATTR GetFileExt(SdFile* file, char* extension)
 {
     if (file->isSubDir())   return FE_DIR;
     
-    char fileName[64];
-    file->getName(fileName, 64);
-    Serial.println(fileName);
-    char* extension = fileName + strlen(fileName) - 3;
-    Serial.println(extension);
+    //char fileName[64];
+    //file->getName(fileName, 64);
+    //Serial.println(fileName);
+    //char* extension = fileName + strlen(fileName) - 3;
+    //Serial.println(extension);
 
     //if (!strcasecmp(extension, "TXT"))  return FE_TXT;
     //if (!strcasecmp(extension, "JPG"))  return FE_JPG;
@@ -2608,12 +2607,114 @@ FILE_EXT ICACHE_FLASH_ATTR GetFileExt(SdFile *file)
     if (!strcmp_P(extension, PSTR("BMP")))  return FE_BMP;
     if (!strcmp_P(extension, PSTR("Z80")))  return FE_Z80;
     if (!strcmp_P(extension, PSTR("SNA")))  return FE_SNA;
+    if (!strcmp_P(extension, PSTR("SCR")))  return FE_SCR;
+    if (!strcmp_P(extension, PSTR("POK")))  return FE_POK;
+    
     if (!strcmp_P(extension, PSTR("txt")))  return FE_TXT;
     if (!strcmp_P(extension, PSTR("jpg")))  return FE_JPG;
     if (!strcmp_P(extension, PSTR("gif")))  return FE_GIF;
     if (!strcmp_P(extension, PSTR("bmp")))  return FE_BMP;
     if (!strcmp_P(extension, PSTR("z80")))  return FE_Z80;
     if (!strcmp_P(extension, PSTR("sna")))  return FE_SNA;
+    if (!strcmp_P(extension, PSTR("scr")))  return FE_SCR;
+    if (!strcmp_P(extension, PSTR("pok")))  return FE_POK;
 
     return FE_OTHER;
+}
+
+
+// This next function will be called during decoding of the jpeg file to
+// render each block to the TFT.  If you use a different TFT library
+// you will need to adapt this function to suit.
+bool ICACHE_FLASH_ATTR tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
+{
+    //Serial.println(F("output"));
+    //Serial.printf("output %d, %d  %d, %d \n", x, y, w, h);
+    
+    // Stop further decoding as image is running off bottom of screen
+    if ( y >= zxDisplayTft.height() ) return 0;
+    
+    // This function will clip the image block rendering automatically at the TFT boundaries
+    zxDisplayTft.pushImage(x, y, w, h, bitmap);
+    
+    // This might work instead if you adapt the sketch to use the Adafruit_GFX library
+    // zxDisplayTft.drawRGBBitmap(x, y, bitmap, w, h);
+    
+    // Return 1 to decode next block
+    return 1;
+}
+
+SdFile* fileTEMP;
+
+// Function we pass to any viewer to request more data into its buffer
+unsigned int ICACHE_FLASH_ATTR read_callback(uint8_t* buf, unsigned int len)
+{
+    //PROBLEM: THIS RELIES ON A STATIC FILE VARIABLE.
+    //that should come as void* parameter ("context")
+    if (fileTEMP == nullptr) return -1;
+    
+    //Serial.printf("input %d %d \n", fileTEMP->curPosition(), len);    //takes 16 bytes of ram
+    
+    //nullptr specifies skipping
+    if (buf == nullptr)
+    {
+        fileTEMP->seekCur(len);
+        return len;
+    }
+
+    //first check if there's enough data in the buffer of the file; try reading
+    int readLength = fileTEMP->read(buf, len);
+    //Serial.println(readLength);
+    if (readLength < 0)
+    {//fail; re-activate the sd card and try again
+        //quite slow
+        if (!sd.cardBegin(SD_CS, SD_SCK_MHZ(50)))
+        { 
+            return -1;
+        }
+    
+        readLength = fileTEMP->read(buf, len);
+        //Serial.println(readLength);
+    }
+    
+    return readLength;   
+
+    return -1;
+}
+
+int ICACHE_FLASH_ATTR JpegViewer(SdFile *file, unsigned char *BUFFER, int bufferSize)
+{
+    fileTEMP = file;
+    int fileSize = file->fileSize();
+
+    TJpg_Decoder TJpgDec;
+    
+    TJpgDec.setJpgScale(1);
+    TJpgDec.setSwapBytes(true);
+    TJpgDec.setDisplayCallback(tft_output);
+    TJpgDec.drawJpg(0,0, fileSize, read_callback, BUFFER, bufferSize); //1K won't be enough! use RAM! WORKSPACE_SIZE);
+
+    fileTEMP = nullptr;
+
+    waitForInputClear = true;
+    while(true)
+    {
+        UpdateInputs(false);
+        delay(1);   //power saving
+                
+        if (MustWaitForInputClear())
+        {
+            continue;   //keep waiting
+        }
+        
+        if (KEMPSTONJOYSTICK & BUTTON_ESC
+         || KEMPSTONJOYSTICK & BUTTON_FIRE )    //select
+        {
+            waitForInputClear = true;
+            break;
+        }
+        //ToDo: allow panning and zooming (if jpeg is larger than screen)
+    }
+    
+    return 0;
 }

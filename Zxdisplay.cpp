@@ -360,7 +360,7 @@ void zxDisplayReset()
   spiSwitchSet(TFT_CS);
 
   zxDisplayTft.init();
-  zxDisplayTft.setRotation(3);  //1: sd card slot on bottom; 3: sd card slot on top
+  zxDisplayTft.setRotation(1);  //1: sd card slot on bottom; 3: sd card slot on top
   //zxDisplayTft.setWindow(0, 0, 319, 239);
 
   zxDisplayX = 0;
