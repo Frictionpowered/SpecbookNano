@@ -8,13 +8,14 @@
    
    Inspired by and based on https://github.com/aldolo69/esp8266_zxspectrum_emulator \
    
-   acknowledgement of others valuable works: 
+   acknowledgements of others valuable works: 
    
    Marat Fayzullin for z80 cpu emulation \
    https://fms.komkon.org/EMUL8/ \
-   https://mikrocontroller.bplaced.net/wordpress/?page_id=756 \
-   https://github.com/uli/Arduino_nowifi \
-   https://github.com/greiman/SdFat 
+   Bill Greiman for the best SdFat library \
+   https://github.com/greiman/SdFat \
+   Bodmer for the TFT_eSPI lib \
+   https://github.com/Bodmer/TFT_eSPI
 
 
 ![Image](images/IMG_5053.JPG)
