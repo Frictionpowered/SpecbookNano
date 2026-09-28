@@ -46,3 +46,15 @@ Parts list:
 1x 90x70mm protoboard and a lot of tiny wires, soon to be replaced with custom PCB :)\
 3D printed shell\
 8x M2x6mm screws
+
+
+Since then i designed a custom PCB for it, here are some photos of the "proper" version during the process of being built.
+The keyboard is uncannily similar to the real thing :)
+
+![Image](images/IMG_5115(1).JPG)
+![Image](images/IMG_5116.JPG)
+![Image](images/IMG_5118(1).JPG)
+![Image](images/IMG_5119(1).JPG)
+![Image](images/IMG_5124.JPG)
+![Image](images/IMG_5125(1).JPG)
+![Image](images/IMG_5126.JPG)
